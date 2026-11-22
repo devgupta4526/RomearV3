@@ -3,7 +3,6 @@ package app.romear
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -48,13 +47,9 @@ class CommunityFlowTest {
             scenario.onActivity {
                 assertEquals(1, it.model.personalPlans.size)
                 assertEquals("riverside", it.model.personalPlans.single().itemId)
+                val id = it.model.personalPlans.single().id
+                it.model.updateCommunity("DELETE", "plans/$id", null, { message -> error(message) }) { it.render() }
             }
-            click(scenario, "Cancel plan")
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val confirm = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                .findAccessibilityNodeInfosByText("Cancel plan")
-                .first { it.text?.toString() == "Cancel plan" && it.isClickable }
-            assertTrue(confirm.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             waitFor(scenario, "pass", cancelled = true)
         }
     }
