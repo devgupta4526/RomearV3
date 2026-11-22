@@ -6,6 +6,7 @@ plugins {
 }
 val backendUrl = providers.gradleProperty("romearBackendUrl").orElse("").get().trim().trimEnd('/')
 val emailAuth = providers.gradleProperty("romearEmailAuth").orElse("false").get().toBooleanStrict()
+val deviceAuth = providers.gradleProperty("romearDeviceAuth").orElse("false").get().toBooleanStrict()
 
 android {
     namespace = "app.romear"
@@ -26,10 +27,12 @@ android {
             }
         }
         buildConfigField("String", "BACKEND_URL", "\"$backendUrl\"")
-        require(!emailAuth || backendUrl.startsWith("https://") || backendUrl.startsWith("http://127.0.0.1:")) {
-            "romearEmailAuth requires a backend URL"
+        require(!(emailAuth && deviceAuth)) { "Choose one sign-in method per build" }
+        require(!(emailAuth || deviceAuth) || backendUrl.startsWith("https://") || backendUrl.startsWith("http://127.0.0.1:")) {
+            "Sign-in requires a backend URL"
         }
         buildConfigField("boolean", "EMAIL_AUTH", emailAuth.toString())
+        buildConfigField("boolean", "DEVICE_AUTH", deviceAuth.toString())
     }
     buildFeatures { viewBinding = true; buildConfig = true }
     compileOptions {

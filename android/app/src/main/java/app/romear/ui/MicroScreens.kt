@@ -22,22 +22,31 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
+import org.json.JSONObject
 
 fun CityScreens.renderChatMicro() {
-    val target = CityData.find(route.id) ?: return
+    val target = model.livePerson(route.id) ?: CityData.find(route.id) ?: return
     val b = ScreenChatBinding.inflate(host.layoutInflater, host.binding.microHost, true)
     val group = target.kind == app.romear.data.Kind.CLUB
+    val live = model.livePerson(target.id) != null || (model.activeCommunity && group)
     b.chatHeader.addView(ui.icon(R.drawable.ic_back, "Back to conversations") { host.back() })
     b.chatHeader.addView(ui.avatar(target.image, 36))
     b.chatHeader.addView(ui.column().apply {
         layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = ui.dp(10) }
         addView(ui.text(if (target.id == "runners") "Riverside Runners" else target.title, 16, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        addView(ui.text(if (group) "32 members · Club" else "● Online", 11, color = ui.forest))
+        val status = when {
+            live && group -> "${model.clubMemberships.firstOrNull { it.id == target.id }?.members ?: 0} members · Club"
+            live -> target.location
+            group -> "32 members · Club"
+            else -> "● Online"
+        }
+        addView(ui.text(status, 11, color = ui.forest))
         setOnClickListener { go(if (group) "club" else "person", target.id) }
     })
     b.chatHeader.addView(ui.icon(R.drawable.ic_video, "Preview video call") { toast("Video call preview") })
     b.chatHeader.addView(ui.icon(R.drawable.ic_more, "Conversation actions") {
-        choose("Conversation", listOf("View profile", "Shared photos", "Clear my messages")) { action ->
+        choose("Conversation", if (live) listOf("View profile") else listOf("View profile", "Shared photos", "Clear my messages")) { action ->
             when(action) {
                 "View profile" -> go(if(group) "club" else "person", target.id)
                 "Shared photos" -> toast("Tap the photo in the conversation to view the venue")
@@ -46,6 +55,14 @@ fun CityScreens.renderChatMicro() {
         }
     })
     if (group) ui.chips(b.messages, listOf("Chat", "Events", "Members"), "Chat") { tab -> if (tab == "Events") go("events") else if (tab == "Members") go("people") }
+    if (live && group && target.id !in joinedClubs) {
+        b.messageInput.isEnabled = false
+        b.send.isEnabled = false
+        b.attach.isEnabled = false
+        ui.empty(b.messages, "Join the club to chat", "Club conversations are available to members.")
+        ui.button(b.messages, "View club") { go("club", target.id) }
+        return
+    }
     b.messages.addView(ui.text("Today", 11, color = ui.muted).apply { gravity = Gravity.CENTER; setPadding(ui.dp(8)); background = ui.shape(ui.sand, 16); layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ui.dp(12) } })
     fun bubble(text: String, mine: Boolean, time: String, photo: Boolean = false, author: String? = null) {
         val box = ui.column(if (photo) 5 else 10).apply {
@@ -59,23 +76,26 @@ fun CityScreens.renderChatMicro() {
         if (author != null) box.addView(ui.text(author, 12, true, ui.forest))
         if (photo) box.addView(ui.image(if (group) target.image else R.drawable.chat_coffee, 138).apply { contentDescription = "Shared community photograph"; setOnClickListener { if (group) go("club", target.id) else go("venue", "riverside") } })
         if (text.isNotBlank()) box.addView(ui.text(text, 15))
-        box.addView(ui.text("$time${if (mine) "  ✓✓" else ""}", 10, color = ui.muted).apply { gravity = Gravity.END; setPadding(0, ui.dp(4), ui.dp(2), 0) })
+        box.addView(ui.text("$time${if (!mine) "" else if (live) "  ✓" else "  ✓✓"}", 10, color = ui.muted).apply { gravity = Gravity.END; setPadding(0, ui.dp(4), ui.dp(2), 0) })
         b.messages.addView(box)
     }
-    if (group) {
+    if (!live && group) {
         bubble(if (target.id == "runners") "Reminder: Sunday’s long run is at 7:00 AM from Ponte Milvio. New route (12 km)!" else "Welcome to ${target.title}! Share your questions about the next meetup here so everyone can join the plan.", false, "09:12", author = "Sam Verdi")
         bubble("", false, "09:14", photo = true)
         bubble("I’m in! Bringing a friend too.", false, "09:18", author = "Lena B.")
         bubble("Great! Weather looks perfect.", false, "09:21", author = "Marco R.")
-    } else {
+    } else if (!live) {
         bubble("Hey! Are you still going to the Riverside Café meetup tomorrow?", false, "09:20")
         bubble("Yes! Definitely. Are we meeting at 10 AM as planned?", true, "09:23")
         bubble("Exactly. They just confirmed a new seasonal menu too!", false, "09:26")
         bubble("", false, "09:27", photo = true)
         bubble("Nice! Can’t wait. See you there!", true, "09:31")
     }
-    s.messages[target.id].orEmpty().forEach { message ->
-        bubble(if (message.text == "[photo:cafe]") "" else message.text, message.mine, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.time)), photo = message.text == "[photo:cafe]")
+    val messages = if (live) model.thread[target.id].orEmpty() else s.messages[target.id].orEmpty()
+    messages.forEach { message ->
+        val photo = !live && message.text == "[photo:cafe]"
+        bubble(if (photo) "" else message.text, message.mine, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.time)), photo = photo,
+            author = message.author?.takeIf { group && !message.mine })
     }
     b.messageInput.setText(draft("message_${target.id}"))
     b.messageInput.setSelection(b.messageInput.length())
@@ -85,15 +105,28 @@ fun CityScreens.renderChatMicro() {
         if (value.isBlank()) return@setOnClickListener
         if (value.length > 2000) { b.messageInput.error = "Keep messages under 2,000 characters"; return@setOnClickListener }
         host.restoreChatFocus = b.messageInput.hasFocus()
-        save("message_${target.id}", ""); repo.send(target.id, value)
+        if (live) {
+            val queued = draft("pendingSend")
+            val id = queued.substringBefore('\n').takeIf { it.isNotBlank() && queued.substringAfter('\n') == value }
+                ?: UUID.randomUUID().toString()
+            save("pendingSend", "$id\n$value")
+            val endpoint = if (group) "clubs/${target.id}/messages" else "messages/${target.id}"
+            model.updateCommunity("PUT", endpoint, JSONObject().put("id", id).put("body", value), ::toast) {
+                if (draft("message_${target.id}").trim() == value) save("message_${target.id}", "")
+                save("pendingSend", "")
+                refresh()
+            }
+        } else {
+            save("message_${target.id}", ""); repo.send(target.id, value)
+        }
     }
-    b.attach.setOnClickListener { choose("Add to conversation", listOf("Café photo", "Share an event", "Suggest a venue")) { option -> when(option) {
+    b.attach.setOnClickListener { choose("Add to conversation", if (live) listOf("Share an event", "Suggest a venue") else listOf("Café photo", "Share an event", "Suggest a venue")) { option -> when(option) {
         "Café photo" -> repo.send(target.id, "[photo:cafe]")
         "Share an event" -> go("events")
         else -> go("venues")
     } } }
     if (host.restoreChatFocus) { b.messageInput.requestFocus(); host.restoreChatFocus = false }
-    if (s.messages[target.id].orEmpty().isNotEmpty()) b.messagesScroll.post { b.messagesScroll.smoothScrollTo(0, b.messages.height) }
+    if (messages.isNotEmpty()) b.messagesScroll.post { b.messagesScroll.smoothScrollTo(0, b.messages.height) }
 }
 
 fun CityScreens.renderStoryMicro() {

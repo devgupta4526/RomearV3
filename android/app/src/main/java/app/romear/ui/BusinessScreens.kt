@@ -1,6 +1,7 @@
 package app.romear.ui
 
 import app.romear.R
+import org.json.JSONObject
 import app.romear.data.LocalEvent
 import com.google.android.material.materialswitch.MaterialSwitch
 import java.time.LocalDate
@@ -30,7 +31,7 @@ fun CityScreens.business() {
     if (tab == "Club tools") {
         ui.stats(body, listOf(s.events.size.toString() to "Event drafts", s.approved.size.toString() to "Approved", (3 - s.approved.size - s.declined.size).coerceAtLeast(0).toString() to "Sample requests"))
         ui.button(body, "Create an event draft", icon = R.drawable.ic_plus) { go("create-event") }
-        ui.action(body, "Member approvals", "Try a sample organiser queue", R.drawable.ic_users) { go("approvals") }
+        ui.action(body, "Member approvals", if (model.activeCommunity) "Review requests to join your pools" else "Try a sample organiser queue", R.drawable.ic_users) { go("approvals") }
         ui.action(body, "Club verification", "Understand the publishing requirements", R.drawable.ic_shield) { go("verification") }
         ui.section(body, "Your event drafts")
         if (s.events.isEmpty()) ui.note(body, "Bring your first idea to life. Event drafts are saved on this device.")
@@ -49,6 +50,28 @@ fun CityScreens.business() {
 }
 
 fun CityScreens.approvals() {
+    if (model.activeCommunity) {
+        ui.heading(body, "Good communities\nstart with people.", "Requests to join your pools.")
+        if (model.applicants.isEmpty()) ui.empty(body, "No requests yet", "Requests from members will appear here.")
+        model.applicants.forEach { applicant ->
+            fun review(status: String) {
+                val path = "pools/${applicant.pool}/requests/${applicant.account}"
+                model.updateCommunity("PUT", path, JSONObject().put("status", status), ::toast) { refresh() }
+            }
+            ui.card(body) { box ->
+                box.addView(ui.text(applicant.name, 20, true)); ui.gap(box, 8)
+                box.addView(ui.text(applicant.title, 14, color = ui.muted))
+                if (applicant.status == "pending") {
+                    ui.button(box, "Approve request") { review("approved") }
+                    ui.button(box, "Decline", false) { review("declined") }
+                } else {
+                    box.addView(ui.text(applicant.status.replaceFirstChar { it.uppercase() }, 14, true))
+                    ui.button(box, "Undo", false) { review("pending") }
+                }
+            }
+        }
+        return
+    }
     ui.heading(body, "Good communities\nstart with people.", "Sample requests for City Runners Club.")
     ui.note(body, "Practice queue · These are fictional requests. Decisions are saved only on this device.")
     listOf("aarav" to "Aarav Mehta", "riya" to "Riya Sharma", "kabir" to "Kabir Singh").forEach { (id, name) ->

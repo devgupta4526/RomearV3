@@ -11,7 +11,7 @@ ROMEAR runs on [Render Free](https://dashboard.render.com/web/srv-dc18lcnf3r2c73
 Build against this deployment from the Android project directory.
 
 ```powershell
-.\gradlew.bat :app:assembleDebug -PromearBackendUrl=https://romear-api-cgrm.onrender.com
+.\gradlew.bat :app:assembleDebug -PromearBackendUrl=https://romear-api-cgrm.onrender.com -PromearDeviceAuth=true
 ```
 
 ### Fresh deployment with Neon
@@ -31,6 +31,16 @@ The API accepts up to 128 KiB per installation snapshot and defaults to 100 inst
 Set `RESEND_API_KEY` and `AUTH_EMAIL_FROM` in Render using your verified sender domain. The Blueprint generates `AUTH_CODE_SECRET`. Build the Android app with `-PromearEmailAuth=true` and the HTTPS backend URL to activate email sign-in in the existing screens. The default build retains the demo sign-in. Email codes are single-use, expire after ten minutes and permit five verification attempts. Account sessions expire after 30 days. New devices can retrieve a saved profile by signing in again.
 
 Live mail delivery requires a [Resend verified sender domain](https://resend.com/docs/dashboard/domains/introduction). SMS and paid features require separate provider setup. The private installation snapshot remains separate from the account profile.
+
+## Device accounts and community
+
+The free build uses device credentials. **Find my city** creates or restores the account linked to this installation. Clearing Android app storage loses that credential. **Explore the demo** uses the local prototype. To turn off device registration and sign-in, set `ENABLE_DEVICE_ACCOUNTS=false` on Render.
+
+Signed-in accounts can publish their profiles during setup, discover and follow other members, send direct text messages, join the existing ROMEAR clubs, and access member-only club chat. Members can create pools and request spots. Organizers decide in Member approvals, which checks each pool's capacity in a database transaction. My Plans saves and cancels private plans for the existing event and café catalogue. A saved plan does not reserve inventory or charge a payment.
+
+Verified club management, public event and offer publishing, cloud media, production email delivery, SMS, and payments remain outside this release.
+
+Run the API integration tests with `python -m unittest -v test_community` from this directory. Set `ROMEAR_TEST_DATABASE_URL` to disposable local PostgreSQL before running them.
 
 ## Local verification
 

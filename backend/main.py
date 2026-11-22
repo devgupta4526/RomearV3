@@ -12,9 +12,46 @@ from psycopg.types.json import Jsonb
 from starlette.concurrency import run_in_threadpool
 from accounts import router as account_router
 from database import connect
+from community import router as community_router
 
 MAX_BODY = 128 * 1024
 TOKEN = re.compile(r"Bearer ([a-f0-9]{64})")
+
+
+class LimitCommunityBody:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] != "http"
+            or scope["method"] not in {"POST", "PUT"}
+            or not scope["path"].startswith(("/v1/auth/", "/v1/community/"))
+        ):
+            await self.app(scope, receive, send)
+            return
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            if len(body) + len(chunk) > 16 * 1024:
+                await JSONResponse({"detail": "Request is too large"}, status_code=413)(scope, receive, send)
+                return
+            body.extend(chunk)
+            if not message.get("more_body"):
+                break
+        delivered = False
+
+        async def replay_body():
+            nonlocal delivered
+            if delivered:
+                return await receive()
+            delivered = True
+            return {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        await self.app(scope, replay_body, send)
 
 
 @asynccontextmanager
@@ -30,7 +67,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ROMEAR API", lifespan=lifespan, docs_url=None, redoc_url=None)
+app.add_middleware(LimitCommunityBody)
 app.include_router(account_router)
+app.include_router(community_router)
 
 
 @app.exception_handler(psycopg.Error)

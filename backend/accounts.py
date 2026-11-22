@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Request as ApiRequest, Response
 from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
+from psycopg.errors import UniqueViolation
 
 from database import connect
 
@@ -33,6 +34,7 @@ class AccountProfile(BaseModel):
     bio: str = Field(max_length=160)
     city: str = Field(min_length=1, max_length=80)
     interests: list[str] = Field(max_length=20)
+    discoverable: bool | None = None
 
 
 def code_digest(secret: str, challenge: UUID, code: str) -> bytes:
@@ -68,7 +70,7 @@ def signing_secret() -> str:
 @router.post("/challenges", status_code=201)
 def create_challenge(data: ChallengeRequest, response: Response):
     email = data.email.strip().lower()
-    if not EMAIL.fullmatch(email) or email.endswith("@example.com"):
+    if not EMAIL.fullmatch(email) or email.endswith(("@example.com", ".invalid")):
         raise HTTPException(422, "Enter a valid email address")
     secret = signing_secret()
     api_key, sender = os.getenv("RESEND_API_KEY"), os.getenv("AUTH_EMAIL_FROM")
@@ -105,7 +107,7 @@ def verify(data: VerificationRequest, response: Response):
     digest = code_digest(signing_secret(), data.challenge, data.code)
     token = secrets.token_hex(32)
     account = None
-    profile = None
+    result = None
     with connect() as db:
         row = db.execute(
             """
@@ -125,20 +127,48 @@ def verify(data: VerificationRequest, response: Response):
                 """,
                 (uuid4(), row[0]),
             ).fetchone()[0]
-            saved = db.execute("SELECT profile FROM account_profile WHERE account_id = %s", (account,)).fetchone()
-            profile = saved[0] if saved else None
-            db.execute("DELETE FROM account_session WHERE expires_at <= now()")
-            db.execute(
-                """
-                INSERT INTO account_session (token_hash, account_id, expires_at)
-                VALUES (%s, %s, now() + interval '30 days')
-                """,
-                (hashlib.sha256(bytes.fromhex(token)).digest(), account),
-            )
+            result = issue_session(db, account, token)
     if account is None:
         raise HTTPException(401, "Code is invalid or expired")
     response.headers["Cache-Control"] = "no-store"
-    return {"account_id": account, "token": token, "profile": profile}
+    return result
+
+
+def issue_session(db, account: UUID, token: str):
+    saved = db.execute("SELECT profile FROM account_profile WHERE account_id = %s", (account,)).fetchone()
+    db.execute("DELETE FROM account_session WHERE expires_at <= now()")
+    db.execute(
+        """
+        INSERT INTO account_session (token_hash, account_id, expires_at)
+        VALUES (%s, %s, now() + interval '30 days')
+        """, (hashlib.sha256(bytes.fromhex(token)).digest(), account),
+    )
+    return {"account_id": account, "token": token, "profile": saved[0] if saved else None}
+
+
+@router.post("/device")
+def device_account(request: ApiRequest, response: Response):
+    if os.getenv("ENABLE_DEVICE_ACCOUNTS", "true").lower() != "true":
+        raise HTTPException(404, "Device sign-in is unavailable")
+    key = session_hash(request)
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(610019)")
+        existing = db.execute("SELECT account_id FROM device_account WHERE token_hash = %s", (key,)).fetchone()
+        if existing:
+            account = existing[0]
+            db.execute("DELETE FROM account_session WHERE account_id = %s", (account,))
+        else:
+            total, recent = db.execute(
+                "SELECT count(*), count(*) FILTER (WHERE created_at > now() - interval '1 hour') FROM device_account"
+            ).fetchone()
+            if total >= int(os.getenv("MAX_DEVICE_ACCOUNTS", "100")) or recent >= 20:
+                raise HTTPException(429, "New registrations are temporarily limited")
+            account = uuid4()
+            db.execute("INSERT INTO account (id, email) VALUES (%s, %s)", (account, f"{account}@device.romear.invalid"))
+            db.execute("INSERT INTO device_account (token_hash, account_id) VALUES (%s, %s)", (key, account))
+        result = issue_session(db, account, secrets.token_hex(32))
+    response.headers["Cache-Control"] = "no-store"
+    return result
 
 
 def session_hash(request: ApiRequest) -> bytes:
@@ -170,15 +200,19 @@ def session(request: ApiRequest, response: Response):
 def update_profile(profile: AccountProfile, request: ApiRequest):
     if any(not 0 < len(interest) <= 40 for interest in profile.interests):
         raise HTTPException(422, "Invalid interests")
-    with connect() as db:
-        account = authenticated_account(db, request)
-        db.execute(
-            """
-            INSERT INTO account_profile (account_id, profile) VALUES (%s, %s)
-            ON CONFLICT (account_id) DO UPDATE SET profile = EXCLUDED.profile
-            """,
-            (account, Jsonb(profile.model_dump())),
-        )
+    try:
+        with connect() as db:
+            account = authenticated_account(db, request)
+            db.execute(
+                """
+                INSERT INTO account_profile (account_id, profile, discoverable) VALUES (%s, %s, COALESCE(%s, false))
+                ON CONFLICT (account_id) DO UPDATE SET profile = EXCLUDED.profile,
+                    discoverable = COALESCE(%s, account_profile.discoverable)
+                """,
+                (account, Jsonb(profile.model_dump(exclude={"discoverable"})), profile.discoverable, profile.discoverable),
+            )
+    except UniqueViolation as exc:
+        raise HTTPException(409, "That username is already taken") from exc
     return Response(status_code=204)
 
 

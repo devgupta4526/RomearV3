@@ -43,7 +43,7 @@ fun CityScreens.profile() {
     ui.action(body, "Experience map", "Explore the illustrated Rome map", R.drawable.ic_pin) { go("map") }
     ui.action(body, "Badges & achievements", "$xp local exploration points", R.drawable.ic_star) { go("badges") }
     ui.action(body, "Activity timeline", "The little things add up", R.drawable.ic_calendar) { go("timeline") }
-    ui.action(body, "My clubs", "${s.joined.size} communities", R.drawable.ic_users) { go("clubs", "joined") }
+    ui.action(body, "My clubs", "${joinedClubs.size} communities", R.drawable.ic_users) { go("clubs", "joined") }
     ui.action(body, "Places to explore", "Build your next city chapter", R.drawable.ic_compass) { go("places") }
     ui.action(body, "My progress", "A recap of your local activity", R.drawable.ic_star) { go("recap") }
 }
@@ -84,7 +84,9 @@ fun CityScreens.editProfile() {
             thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(ui.forest, ui.muted))
             trackTintList = android.content.res.ColorStateList.valueOf(ui.sand)
             text = interest; isChecked = interest in s.interests; minHeight = ui.dp(48)
-            setOnCheckedChangeListener { _, enabled -> repo.update { state -> state.copy(interests = if (enabled) state.interests + interest else state.interests - interest) } }
+            setOnCheckedChangeListener { _, enabled ->
+                saveProfileField { state -> state.copy(interests = if (enabled) state.interests + interest else state.interests - interest) }
+            }
         })
     }
 }
@@ -196,7 +198,9 @@ fun CityScreens.settings() {
     ui.heading(body, "Settings")
     ui.action(body, "Edit profile", "Name, bio and interests", R.drawable.ic_user) { go("edit-profile") }
     ui.action(body, "Home city", s.city, R.drawable.ic_pin) {
-        choose("Choose your city", listOf("Rome", "Milan", "Florence", "Naples", "Bologna", "Venice")) { city -> repo.update { it.copy(city = city) } }
+        choose("Choose your city", listOf("Rome", "Milan", "Florence", "Naples", "Bologna", "Venice")) { city ->
+            saveProfileField { it.copy(city = city) }
+        }
     }
     ui.section(body, "Privacy")
     body.addView(SwitchMaterial(host).apply {

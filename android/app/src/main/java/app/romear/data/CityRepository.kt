@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 data class Booking(val id: String, val itemId: String, val date: String, val time: String, val guests: Int, val cancelled: Boolean = false)
-data class Message(val text: String, val mine: Boolean, val time: Long = System.currentTimeMillis())
+data class Message(val text: String, val mine: Boolean, val time: Long = System.currentTimeMillis(), val author: String? = null)
 data class LocalPost(val id: String, val text: String, val category: String, val image: String? = null)
 data class LocalPool(val id: String, val name: String, val location: String, val date: String, val capacity: Int, val description: String = "", val time: String = "")
 data class LocalEvent(val id: String, val name: String, val description: String, val location: String, val date: String)

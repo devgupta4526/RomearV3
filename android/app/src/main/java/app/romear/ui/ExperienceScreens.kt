@@ -7,6 +7,7 @@ import app.romear.data.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import org.json.JSONObject
 
 fun CityScreens.listing() {
     val venues = route.page == "venues"
@@ -55,8 +56,9 @@ fun CityScreens.booking() {
     val date = draft("date_${item.id}", s.events.firstOrNull { it.id == item.id }?.date ?: LocalDate.now().plusDays(1).toString())
     val time = draft("time_${item.id}", if (item.kind == Kind.EVENT) "5:00 PM" else "1:30 PM")
     val guests = draft("guests_${item.id}", "2").toIntOrNull()?.coerceIn(1, 8) ?: 2
+    val live = model.activeCommunity && s.events.none { it.id == item.id }
     ui.heading(body, if (item.kind == Kind.EVENT) "Checkout" else "Book a Table", item.title)
-    ui.note(body, "1  Details    →    2  Local confirmation")
+    ui.note(body, if (live) "1  Details    →    2  Save plan" else "1  Details    →    2  Local confirmation")
     ui.action(body, "Select a date", LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy")), R.drawable.ic_calendar) {
         pickDate(date) { save("date_${item.id}", it); refresh() }
     }
@@ -70,47 +72,65 @@ fun CityScreens.booking() {
         box.addView(ui.text("Your plan", 20, true)); ui.gap(box, 10)
         box.addView(ui.text("${item.title}\n${item.location}\n$date · $time\n$guests guests", 15))
         ui.divider(box); box.addView(ui.text("Total: €0.00", 18, true, ui.forest))
-        ui.gap(box, 8); box.addView(ui.text("This is a local planning example. It does not check live inventory, charge a payment method or reserve a real place.", 13, color = ui.muted))
+        ui.gap(box, 8); box.addView(ui.text(if (live) "Saved to your account as a personal plan. No table or ticket will be reserved." else "This is a local planning example. It does not check live inventory, charge a payment method or reserve a real place.", 13, color = ui.muted))
     }
-    ui.button(body, "Confirm Booking") {
+    ui.button(body, if (live) "Save plan" else "Confirm Booking") {
         if (LocalDate.parse(date).isBefore(LocalDate.now())) { toast("Choose today or a future date"); return@button }
-        val existing = s.bookings.firstOrNull { !it.cancelled && it.itemId == item.id && it.date == date && it.time == time }
-        if (existing != null) { toast("You already have this demo reservation"); go("pass", existing.id) }
-        else { val id = repo.book(item.id, date, time, guests); go("pass", id) }
+        val existing = visiblePlans().firstOrNull { !it.cancelled && it.itemId == item.id && it.date == date && it.time == time }
+        if (existing != null) { toast("You already have this plan"); go("pass", existing.id) }
+        else if (live) {
+            val key = "plan_${item.id}_${date}_${time}_$guests"
+            val id = draft(key).ifBlank { UUID.randomUUID().toString().also { save(key, it) } }
+            val payload = JSONObject().put("id", id).put("item_id", item.id).put("day", date)
+                .put("time_label", time).put("guests", guests)
+            model.updateCommunity("PUT", "plans", payload, ::toast) {
+                save(key, "")
+                go("pass", id)
+            }
+        } else { val id = repo.book(item.id, date, time, guests); go("pass", id) }
     }
-    detailSection("Booking information", "What’s included" to if (item.kind == Kind.EVENT) "Entry for your selected number of guests. Optional purchases are separate." else "A sample table reservation for your party. Food and drinks are separate.", "Changes & cancellation" to "You can cancel in My Plans. There is no payment or refund in this mock flow.", "Before confirming" to "Check the date, time, guest count and meeting place. Accessibility or dietary arrangements must be agreed with the host separately.")
+    detailSection("Booking information", "What’s included" to when {
+        live -> "Your selected date, time and party size will appear in My Plans."
+        item.kind == Kind.EVENT -> "Entry for your selected number of guests. Optional purchases are separate."
+        else -> "A sample table reservation for your party. Food and drinks are separate."
+    }, "Changes & cancellation" to if (live) "You can cancel a saved plan in My Plans." else "You can cancel in My Plans. There is no payment or refund in this mock flow.", "Before confirming" to "Check the date, time, guest count and meeting place. Accessibility or dietary arrangements must be agreed with the host separately.")
 }
 
+internal fun CityScreens.visiblePlans(): List<Booking> = model.personalPlans + s.bookings
+
 fun CityScreens.plans() {
-    ui.heading(body, "My Plans", "Your local reservations, all in one place.")
+    ui.heading(body, "My Plans", if (model.activeCommunity) "Your personal plans, all in one place." else "Your local reservations, all in one place.")
     val filter = draft("filter", "Upcoming")
     ui.chips(body, listOf("Upcoming", "Past", "Cancelled"), filter) { save("filter", it); refresh() }
-    val bookings = s.bookings.filter { b -> when (filter) { "Cancelled" -> b.cancelled; "Past" -> !b.cancelled && LocalDate.parse(b.date).isBefore(LocalDate.now()); else -> !b.cancelled && !LocalDate.parse(b.date).isBefore(LocalDate.now()) } }
+    val bookings = visiblePlans().filter { b -> when (filter) { "Cancelled" -> b.cancelled; "Past" -> !b.cancelled && LocalDate.parse(b.date).isBefore(LocalDate.now()); else -> !b.cancelled && !LocalDate.parse(b.date).isBefore(LocalDate.now()) } }
     if (bookings.isEmpty()) {
         ui.empty(body, "A little space for possibility", "Your ${filter.lowercase()} plans will appear here.")
         ui.button(body, "Find an experience") { go("events") }
     }
     bookings.forEach { b -> findItem(b.itemId)?.let { item ->
-        ui.photo(body, item.copy(subtitle = "${b.date} · ${b.time}\n${b.guests} guests · ${if (b.cancelled) "Cancelled" else "Confirmed"}"), item.id in s.saved, { repo.toggle(item.id, "saved") }, { go("pass", b.id) })
+        val status = if (b.cancelled) "Cancelled" else if (b in model.personalPlans) "Plan saved" else "Confirmed"
+        ui.photo(body, item.copy(subtitle = "${b.date} · ${b.time}\n${b.guests} guests · $status"), item.id in s.saved, { repo.toggle(item.id, "saved") }, { go("pass", b.id) })
     } }
 }
 
 fun CityScreens.pass() {
-    val b = s.bookings.firstOrNull { it.id == route.id } ?: run { ui.empty(body, "Reservation unavailable", "This plan may have been removed from your device."); return }
+    val b = visiblePlans().firstOrNull { it.id == route.id } ?: run { ui.empty(body, "Plan unavailable", "This plan could not be loaded."); return }
+    val live = b in model.personalPlans
     val item = findItem(b.itemId) ?: return
     body.addView(ui.image(item.image, 210)); ui.gap(body, 20)
-    ui.heading(body, item.title, if (b.cancelled) "Cancelled demo reservation" else "Confirmed")
+    ui.heading(body, item.title, if (b.cancelled) "Cancelled" else if (live) "Plan saved" else "Confirmed")
     ui.card(body, 20) { box ->
-        box.addView(ui.text("BOOKING PASS", 11, true, ui.rust).apply { letterSpacing = .12f }); ui.gap(box, 16)
+        box.addView(ui.text(if (live) "PERSONAL PLAN" else "BOOKING PASS", 11, true, ui.rust).apply { letterSpacing = .12f }); ui.gap(box, 16)
         box.addView(ui.text("${b.date}\n${b.time}\n${item.location}", 18, true)); ui.gap(box, 16)
         box.addView(ui.text("${b.guests} guests · ${s.name}", 15)); ui.divider(box)
-        box.addView(ui.text("RM-${b.id}", 24, true, ui.forest)); ui.gap(box, 8)
+        box.addView(ui.text("RM-${b.id.take(8).uppercase()}", 24, true, ui.forest)); ui.gap(box, 8)
         box.addView(ui.text("For your planning only. This reference is not a valid entry ticket, café reservation, or payment receipt.", 14, color = ui.muted))
     }
     ui.button(body, "Share plan", false, R.drawable.ic_share) { share("Let’s go to ${item.title}!\n${b.date} · ${b.time}\n${item.location}\nPlanning example from ROMEAR; no real reservation.") }
-    if (!b.cancelled) ui.button(body, "Cancel demo reservation", false) {
-        confirm("Cancel this plan?", "Only this local demo reservation will be cancelled.", "Cancel plan") {
-            repo.update { state -> state.copy(bookings = state.bookings.map { if (it.id == b.id) it.copy(cancelled = true) else it }) }
+    if (!b.cancelled) ui.button(body, if (live) "Cancel plan" else "Cancel demo reservation", false) {
+        confirm("Cancel this plan?", if (live) "This marks the personal plan as cancelled in your account." else "Only this local demo reservation will be cancelled.", "Cancel plan") {
+            if (live) model.updateCommunity("DELETE", "plans/${b.id}", null, ::toast) { refresh() }
+            else repo.update { state -> state.copy(bookings = state.bookings.map { if (it.id == b.id) it.copy(cancelled = true) else it }) }
         }
     }
     ui.button(body, "View all plans") { go("plans") }
@@ -121,6 +141,15 @@ fun CityScreens.pools(showHeading: Boolean = true) {
     if (showHeading) ui.heading(body, "Pools", "Find someone to play, ride, learn, or explore with.")
     val tab = draft("filter", "Open")
     ui.chips(body, listOf("Open", "My requests", "Created by me"), tab) { save("filter", it); refresh() }
+    if (model.activeCommunity) {
+        val rows = model.sharedPools.filter {
+            when (tab) { "Created by me" -> it.mine; "My requests" -> it.status.isNotBlank(); else -> !it.mine && !LocalDate.parse(it.pool.date).isBefore(LocalDate.now()) }
+        }
+        if (rows.isEmpty()) ui.empty(body, "No pools yet", "Create a pool or explore another day.")
+        rows.forEach { itemCard(it.item) }
+        ui.button(body, "Create a pool", icon = R.drawable.ic_plus) { go("create-pool") }
+        return
+    }
     if (tab != "Created by me") {
         val pools = CityData.pools.filter { tab == "Open" || it.id in s.requested }
         if (pools.isEmpty()) ui.empty(body, "No requests yet", "Open a pool and request to join.")
@@ -133,14 +162,43 @@ fun CityScreens.pools(showHeading: Boolean = true) {
 }
 
 fun CityScreens.pool() {
+    val shared = model.sharedPools.firstOrNull { it.pool.id == route.id }
     val own = s.pools.firstOrNull { it.id == route.id }
-    val p = CityData.pools.firstOrNull { it.id == route.id } ?: own?.let { CityItem(it.id, it.name, "${it.date} · ${it.capacity} places", R.drawable.photo_park, Kind.POOL, it.description.ifBlank { "A community activity organised by ${s.name}." }, it.location) } ?: return
+    val p = shared?.item ?: CityData.pools.firstOrNull { it.id == route.id } ?: own?.let { CityItem(it.id, it.name, "${it.date} · ${it.capacity} places", R.drawable.photo_park, Kind.POOL, it.description.ifBlank { "A community activity organised by ${s.name}." }, it.location) } ?: return
     ui.hero(body, p.copy(image = if (p.id == "table-tennis") R.drawable.photo_table_tennis else p.image), "SMALL PLANS. GOOD COMPANY.")
-    ui.factTiles(body, listOf(Triple(R.drawable.ic_calendar, if (p.id == "table-tennis") "7:00 PM" else if (p.id == "cycling") "6:30 AM" else if (p.id == "study") "4:00 PM" else own?.time?.ifBlank { "Confirm time" }.orEmpty(), "Start time"), Triple(R.drawable.ic_users, if (p.id == "table-tennis") "3 spots" else if (p.id == "cycling") "2 spots" else if (p.id == "study") "2 spots" else "${own?.capacity ?: 4} places", "Room to join"), Triple(R.drawable.ic_shield, "All levels", "Welcome")))
-    ui.socialProof(body, "A small group. A real connection.", "Meet your next good company", if (p.id == "cycling" || own != null) 1 else 2, if (p.id == "cycling") 3 else if (p.id == "study") 4 else own?.capacity ?: 5)
+    val start = shared?.pool?.time ?: when (p.id) { "table-tennis" -> "7:00 PM"; "cycling" -> "6:30 AM"; "study" -> "4:00 PM"; else -> own?.time?.ifBlank { "Confirm time" }.orEmpty() }
+    val room = shared?.let { "${(it.pool.capacity - it.joined).coerceAtLeast(0)} spots" } ?: when (p.id) {
+        "table-tennis" -> "3 spots"
+        "cycling", "study" -> "2 spots"
+        else -> "${own?.capacity ?: 4} places"
+    }
+    ui.factTiles(body, listOf(Triple(R.drawable.ic_calendar, start, "Start time"), Triple(R.drawable.ic_users, room, "Room to join"), Triple(R.drawable.ic_shield, "All levels", "Welcome")))
+    ui.socialProof(body, "A small group. A real connection.", "Meet your next good company", shared?.joined ?: if (p.id == "cycling" || own != null) 1 else 2, shared?.pool?.capacity ?: if (p.id == "cycling") 3 else if (p.id == "study") 4 else own?.capacity ?: 5)
     body.addView(ui.text(p.description)); ui.gap(body, 18)
-    poolInformation(p)
+    if (shared == null) poolInformation(p)
     ui.action(body, p.location, "Meeting point", R.drawable.ic_pin) { toast("Demo meeting point · Rome") }
+    if (shared != null) {
+        ui.note(body, when (shared.status) {
+            "pending" -> "Waiting for the organiser to approve your request."
+            "approved" -> "The organiser approved your request."
+            "declined" -> "The organiser declined your request."
+            else -> "The organiser approves requests."
+        })
+        if (shared.mine) {
+            ui.button(body, "Remove your pool", false) {
+                confirm("Remove ${p.title}?", "This also closes its join requests.", "Remove") {
+                    model.updateCommunity("DELETE", "pools/${p.id}", null, ::toast) { go("pools") }
+                }
+            }
+        } else {
+            val requested = shared.status.isNotBlank()
+            ui.button(body, if (requested) "Withdraw request" else "Request to join", !requested) {
+                model.updateCommunity(if (requested) "DELETE" else "PUT", "pools/${p.id}/request", null, ::toast) { refresh() }
+            }
+        }
+        ui.button(body, "Share pool", false, R.drawable.ic_share) { share("${p.title}\n${p.subtitle}\n${p.location}\nROMEAR") }
+        return
+    }
     ui.note(body, "The organiser approves requests. This offline demo saves the request on your device and does not contact the organiser.")
     if (own == null) ui.button(body, if (p.id in s.requested) "Withdraw local request" else "Request to join", p.id !in s.requested) { repo.toggle(p.id, "requested") }
     else ui.button(body, "Remove your pool", false) { confirm("Remove ${p.title}?", "This removes your locally created pool.", "Remove") { repo.update { it.copy(pools = it.pools.filterNot { pool -> pool.id == p.id }) }; go("pools") } }
@@ -158,17 +216,35 @@ fun CityScreens.createPool() {
     ui.action(body, "Start time", startTime, R.drawable.ic_calendar) { choose("Choose a start time", listOf("6:00 AM", "8:00 AM", "10:00 AM", "12:00 PM", "2:00 PM", "4:00 PM", "6:00 PM", "8:00 PM")) { save("start-time", it); refresh() } }
     val capacity = draft("capacity", "4")
     ui.action(body, "Places available", capacity, R.drawable.ic_users) { choose("Group size", (2..12).map(Int::toString)) { save("capacity", it); refresh() } }
-    ui.note(body, "This creates a pool on your device. Public discovery and organiser requests need a connected service.")
-    ui.button(body, "Create local pool") {
+    val live = model.activeCommunity
+    ui.note(body, if (live) "Members in your city can find this pool and ask to join." else "This creates a pool on your device. Public discovery and organiser requests need a connected service.")
+    ui.button(body, if (live) "Create pool" else "Create local pool") {
         when {
             title.text.toString().trim().length !in 3..80 -> title.error = "Use 3–80 characters"
             location.text.toString().trim().length !in 3..120 -> location.error = "Use 3–120 characters"
             description.text.toString().trim().length !in 20..2000 -> description.error = "Use 20–2,000 characters so people know what to expect"
             LocalDate.parse(date).isBefore(LocalDate.now()) -> toast("Choose today or a future date")
             else -> {
-                val pool = LocalPool(UUID.randomUUID().toString(), title.text.toString().trim(), location.text.toString().trim(), date, capacity.toInt(), description.text.toString().trim(), startTime)
-                save("name", ""); save("location", ""); save("description", "")
-                repo.update { it.copy(pools = it.pools + pool) }; go("pools")
+                val name = title.text.toString().trim()
+                val meetingPlace = location.text.toString().trim()
+                val details = description.text.toString().trim()
+                if (live) {
+                    val payload = JSONObject().put("title", name).put("location", meetingPlace).put("description", details)
+                        .put("day", date).put("capacity", capacity.toInt()).put("time_label", startTime)
+                    val signature = payload.toString()
+                    val previous = draft("pendingPool")
+                    val id = previous.substringBefore('\n').takeIf { it.isNotBlank() && previous.substringAfter('\n') == signature }
+                        ?: UUID.randomUUID().toString()
+                    save("pendingPool", "$id\n$signature")
+                    model.updateCommunity("PUT", "pools", payload.put("id", id), ::toast) {
+                        save("pendingPool", ""); save("name", ""); save("location", ""); save("description", "")
+                        go("pools")
+                    }
+                } else {
+                    val pool = LocalPool(UUID.randomUUID().toString(), name, meetingPlace, date, capacity.toInt(), details, startTime)
+                    save("name", ""); save("location", ""); save("description", "")
+                    repo.update { it.copy(pools = it.pools + pool) }; go("pools")
+                }
             }
         }
     }

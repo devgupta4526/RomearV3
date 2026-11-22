@@ -12,8 +12,21 @@ fun CityScreens.onboarding() {
             body.addView(ui.text("MEET · CREATE · EXPLORE", 11, true, ui.rust).apply { letterSpacing = .16f })
             ui.gap(body, 12)
             ui.heading(body, "Discover. Connect.\nBelong in your city.", "Find your people, your favourite places, and a reason to step outside.")
-            ui.button(body, "Find my city", icon = R.drawable.ic_arrow) { go("signin") }
-            ui.button(body, "Explore the demo", false) { model.finishOnboarding(); refresh() }
+            ui.button(body, "Find my city", icon = R.drawable.ic_arrow) {
+                if (model.auth.deviceEnabled) {
+                    model.authenticate({ toast(it) }) {
+                        val profile = registerDevice()
+                        if (route.page == "welcome") {
+                            if (profile == null) go("city") else {
+                                repo.update { profile }
+                                model.navigate("home", root = true)
+                                refresh()
+                            }
+                        }
+                    }
+                } else go("signin")
+            }
+            ui.button(body, "Explore the demo", false) { model.auth.chooseDemo(); model.finishOnboarding(); refresh() }
             ui.note(body, "A city-first social network. Built around real people and real experiences.")
         }
         "signin" -> {
@@ -103,11 +116,11 @@ fun CityScreens.onboarding() {
         }
         "setup" -> {
             progress(3)
-            ui.heading(body, "Create your profile", "Give your local profile a name and a story.")
+            ui.heading(body, "Create your profile", if (model.auth.hasSession) "Other signed-in members can see your name, bio, city and interests." else "Give your local profile a name and a story.")
             body.addView(ui.avatar(R.drawable.avatar_aarav, 104).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(104), ui.dp(104)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ui.dp(24) } })
-            val name = ui.input(body, "Your name", draft("name", s.name)) { save("name", it) }
-            val username = ui.input(body, "Username", draft("username", s.username)) { save("username", it) }
-            val bio = ui.input(body, "A little about you", draft("bio", s.bio), true) { save("bio", it) }
+            val name = ui.input(body, "Your name", draft("name", if (model.auth.hasSession) "" else s.name)) { save("name", it) }
+            val username = ui.input(body, "Username", draft("username", if (model.auth.hasSession) "" else s.username)) { save("username", it) }
+            val bio = ui.input(body, "A little about you", draft("bio", if (model.auth.hasSession) "" else s.bio), true) { save("bio", it) }
             ui.button(body, "Continue") {
                 val n = name.text.toString().trim(); val u = username.text.toString().trim().removePrefix("@")
                 if (n.length !in 2..50) name.error = "Use 2–50 characters"
@@ -122,11 +135,11 @@ fun CityScreens.onboarding() {
             ui.gap(body, 24)
             ui.heading(body, "Almost ready!", "Your ${s.city} story begins here, ${s.name.substringBefore(' ')}.")
             ui.action(body, "A city to discover", "Clubs, cafés and real experiences", R.drawable.ic_compass) { }
-            ui.action(body, "Your privacy comes first", "This demo keeps your activity on your device", R.drawable.ic_shield) { }
+            ui.action(body, "Your privacy comes first", if (model.auth.hasSession) "Messages and personal plans are private to their participants" else "This demo keeps your activity on your device", R.drawable.ic_shield) { }
             ui.button(body, "Start exploring", icon = R.drawable.ic_arrow) {
                 if (model.auth.hasSession) {
                     model.authenticate({ toast(it) }) {
-                        saveProfile(repo.state.value)
+                        saveProfile(repo.state.value, discoverable = true)
                         if (route.page == "ready") { model.finishOnboarding(); refresh() }
                     }
                 } else {

@@ -21,6 +21,31 @@ class CityScreens(val host: MainActivity) {
     fun save(key: String, value: String) = model.saveDraft("${route.page}_${route.id}_$key", value)
     val localEvents get() = s.events.map { CityItem(it.id, it.name, "${it.date} · Local event draft", R.drawable.photo_market, Kind.EVENT, it.description, it.location, "Community") }
     fun findItem(id: String) = CityData.find(id) ?: localEvents.firstOrNull { it.id == id }
+    val discoverPeople get() = if (model.activeCommunity) model.people.map { it.item } else CityData.people
+    val joinedClubs get() = if (model.activeCommunity) model.clubMemberships.filter { it.joined }.map { it.id }.toSet() else s.joined
+    fun findPerson(id: String) = model.livePerson(id) ?: CityData.people.firstOrNull { it.id == id }
+    fun follows(id: String) = model.people.firstOrNull { it.item.id == id }?.following
+        ?: model.clubMembers.values.asSequence().flatten().firstOrNull { it.item.id == id }?.following
+        ?: (id in s.following)
+    fun followPerson(id: String) {
+        val following = follows(id)
+        if (model.livePerson(id) != null) {
+            model.updateCommunity(if (following) "DELETE" else "PUT", "following/$id", null, ::toast) {
+                if (following) refresh() else go("connected", id)
+            }
+        } else {
+            repo.toggle(id, "following")
+            if (!following) go("connected", id)
+        }
+    }
+    fun saveProfileField(change: (CityState) -> CityState) {
+        if (model.activeCommunity) {
+            model.authenticate({ message -> toast(message); refresh() }) {
+                saveProfile(change(repo.state.value))
+                repo.update(change)
+            }
+        } else repo.update(change)
+    }
     fun choose(title: String, options: List<String>, action: (String) -> Unit) {
         MaterialAlertDialogBuilder(host).setTitle(title).setItems(options.toTypedArray()) { _, index -> action(options[index]) }.setNegativeButton("Cancel", null).show()
     }

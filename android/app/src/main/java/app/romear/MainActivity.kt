@@ -18,6 +18,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import app.romear.databinding.ActivityMainBinding
 import app.romear.ui.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -96,7 +98,14 @@ class MainActivity : AppCompatActivity() {
             } else back()
         }
         binding.trailing.setOnClickListener { navigate(when(model.route.page) { "profile" -> "settings"; "inbox" -> "people"; else -> "notifications" }) }
-        binding.compose.setOnClickListener { if (model.route.page == "inbox") CityScreens(this).choose("New message", app.romear.data.CityData.people.map { it.title }) { name -> navigate("chat", app.romear.data.CityData.people.first { it.title == name }.id) } else navigate("compose") }
+        binding.compose.setOnClickListener {
+            if (model.route.page == "inbox") {
+                if (model.activeCommunity) navigate("people")
+                else CityScreens(this).choose("New message", app.romear.data.CityData.people.map { it.title }) { name ->
+                    navigate("chat", app.romear.data.CityData.people.first { it.title == name }.id)
+                }
+            } else navigate("compose")
+        }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (!model.back()) { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
@@ -104,6 +113,19 @@ class MainActivity : AppCompatActivity() {
             }
         })
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render() } } }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                model.communityRoutes.collectLatest { screen ->
+                    while (true) {
+                        if (model.refreshCommunity() && model.route == screen) {
+                            restoreChatFocus = screen.page == "chat" && currentFocus?.id == R.id.messageInput
+                            render()
+                        }
+                        delay(if (screen.page == "chat") 5_000 else 8_000)
+                    }
+                }
+            }
+        }
         render()
     }
     fun navigate(page: String, id: String = "", root: Boolean = false) {
