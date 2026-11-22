@@ -83,15 +83,15 @@ def feed(request: Request, view: Literal["all", "saved", "following"] = "all", a
 
 @router.put("", status_code=204)
 def publish(data: Post, request: Request):
-    photo = None
-    if data.photo:
-        if data.sample:
-            raise HTTPException(422, "Choose only one photo")
-        photo = validate_photo(data.photo)
     with connect() as db:
         me = authenticated_account(db, request)
         if not db.execute("SELECT 1 FROM account_profile WHERE account_id = %s AND discoverable", (me,)).fetchone():
             raise HTTPException(403, "Publish your profile first")
+        photo = None
+        if data.photo:
+            if data.sample:
+                raise HTTPException(422, "Choose only one photo")
+            photo = validate_photo(data.photo)
         db.execute("SELECT id FROM account WHERE id = %s FOR NO KEY UPDATE", (me,))
         old = db.execute("SELECT owner_id, body, category, photo, sample FROM community_post WHERE id = %s", (data.id,)).fetchone()
         fields = (me, data.body, data.category, photo, data.sample)

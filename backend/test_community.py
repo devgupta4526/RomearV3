@@ -177,6 +177,7 @@ class CommunityTest(unittest.TestCase):
             Image.new("RGB", (4, 4), "white").save(image, format="JPEG")
             photo = base64.b64encode(image.getvalue()).decode("ascii")
         payload = {"id": post_id, "body": "A photo from the park", "category": "Culture", "photo": photo}
+        self.assertEqual(self.call("PUT", root, data=dict(payload, photo="invalid!"))[0], 401)
         self.assertEqual(self.call("PUT", root, author, dict(payload, photo="invalid!"))[0], 422)
         self.assertEqual(self.call("PUT", root, author, payload)[0], 204)
         self.assertEqual(self.call("PUT", root, author, payload)[0], 204)

@@ -29,5 +29,6 @@ Track each flow separately from its verification. Android build and lint are req
 | Badges, timeline and recap | Partly local | Add event-derived activity, achievement rules and private recap reads. |
 | Account deletion | Implemented | Confirm in Settings, delete the authenticated account and cascading records, revoke sessions, and clear this installation’s local data. |
 | Reporting and blocking | Pending | Provide reports, block enforcement across discovery and messaging, and a moderation queue. |
-| Local and hosted regression tests | Required | Exercise multiple accounts, authorization, retries, concurrent requests and cleanup of temporary hosted fixtures. |
+| Local PostgreSQL regression tests | Passed | Six scenarios cover account scope, duplicate writes, message membership, pool capacity, post and photo access, and private drafts and stamps. |
+| Hosted API regression checks | Passed | Two temporary accounts verified photo round trips, comments, likes, private bookmarks, private drafts and stamps, and account deletion. Both test accounts were deleted. |
 | Android device verification | Deferred | Run instrumented and visual checks when a test device or emulator is available. |
