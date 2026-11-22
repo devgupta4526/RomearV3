@@ -6,6 +6,16 @@ An installation credential is randomly generated on the device and stored in pri
 
 ## Free hosting
 
+ROMEAR runs on [Render Free](https://dashboard.render.com/web/srv-dc18lcnf3r2c73c07amg) with [Supabase Free PostgreSQL](https://supabase.com/dashboard/project/zkzfcscpcwnjusxmqhrx). The Render service connects to Supabase's session pooler over verified TLS. The connection string is stored in Render and the Supabase CA is mounted at `/etc/secrets/supabase-ca.crt`. The application role owns the private `romear` schema.
+
+Build against this deployment from the Android project directory.
+
+```powershell
+.\gradlew.bat :app:assembleDebug -PromearBackendUrl=https://romear-api-cgrm.onrender.com
+```
+
+### Fresh deployment with Neon
+
 1. Create a Neon Free project. Copy its direct PostgreSQL connection string with SSL enabled. Store it only in the hosting environment. [Neon Free plan](https://neon.com/docs/introduction/plans)
 2. Connect a Git repository containing this workspace to Render and create a Blueprint from the root `render.yaml`. Set `DATABASE_URL` to the Neon connection string and keep the Web Service on the Free plan. The service initializes its version-one table on startup. [Render Free services](https://render.com/docs/free)
 3. Request `/health` on the Render origin and confirm that it returns `{"status":"ok"}`. From the Android project directory, build with the public origin.
