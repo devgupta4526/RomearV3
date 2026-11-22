@@ -7,6 +7,10 @@ import android.widget.HorizontalScrollView
 import app.romear.R
 import app.romear.data.*
 import java.util.UUID
+import org.json.JSONObject
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import java.io.IOException
 
 fun CityScreens.home() {
     val tab = draft("tab", "For you")
@@ -35,6 +39,14 @@ fun CityScreens.home() {
     ui.gap(body, 20)
     val filter = draft("filter", "All")
     ui.chips(body, listOf("All", "Running", "Cafés", "Culture"), filter) { save("filter", it); refresh() }
+    if (model.activeCommunity) {
+        val rows = model.publicFeed.filter { (filter == "All" || it.category == filter) &&
+            (tab != "Following" || it.following || it.mine) }
+        rows.forEach { communityPostCard(it) }
+        if (rows.isEmpty()) ui.empty(body, "A little quiet here", "Share a moment or discover someone to follow.")
+        ui.action(body, "Something real this weekend", "Browse events around the city", R.drawable.ic_calendar) { go("events") }
+        return
+    }
     if (tab == "Nearby") ui.note(body, "Rome collection · Distances and location are illustrative.")
     if (tab == "Following" && s.following.isEmpty() && s.joined.isEmpty()) {
         ui.empty(body, "A feed that feels like you", "Follow people or join a club to start your own circle.")
@@ -59,6 +71,8 @@ fun CityScreens.home() {
 }
 
 fun CityScreens.feedPost(post: CityItem) {
+    val community = model.publicFeed.firstOrNull { it.id == post.id } ?: model.cloudSavedPosts.firstOrNull { it.id == post.id }
+    if (community != null) { communityPostCard(community); return }
     val author = when (post.id) {
         "sunset" -> CityData.people.first { it.id == "riya" }
         "weekend" -> CityData.people.first { it.id == "meera" }
@@ -89,6 +103,10 @@ fun CityScreens.feedPost(post: CityItem) {
 }
 
 fun CityScreens.post() {
+    if (model.activeCommunity && route.id.length == 36) {
+        renderCommunityPost()
+        return
+    }
     val post = CityData.posts.firstOrNull { it.id == route.id } ?: return
     feedPost(post)
     detailSection("About this moment", "Shared in" to post.location, "Interest" to post.category, "The story" to post.description)
@@ -108,7 +126,8 @@ fun CityScreens.post() {
 
 fun CityScreens.compose() {
     ui.heading(body, "A moment worth\nsharing.", "Tell your city what you’ve been up to.")
-    ui.note(body, "Local post · visible only on this device")
+    val live = model.activeCommunity
+    ui.note(body, if (live) "Posts and photos are visible to signed-in members. Reels stay on this device." else "Local post · visible only on this device")
     val text = ui.input(body, "What’s your city story?", draft("text"), true) { save("text", it) }
     val category = draft("category", "Running")
     ui.chips(body, listOf("Running", "Cafés", "Culture", "Travel"), category) { save("category", it); refresh() }
@@ -126,6 +145,29 @@ fun CityScreens.compose() {
         val value = text.text.toString().trim()
         if (value.isEmpty()) text.error = "Add a few words to your post"
         else if (value.length > 2000) text.error = "Keep posts under 2,000 characters"
+        else if (live && imageKey?.startsWith("video:") != true) {
+            val signature = "$value\n$category\n${imageKey.orEmpty()}"
+            val id = retryId("postRetry", signature)
+            host.lifecycleScope.launch {
+                val payload = try {
+                    JSONObject().put("id", id).put("body", value).put("category", category).apply {
+                        if (imageKey?.startsWith("content:") == true) put("photo", encodeCommunityPhoto(imageKey))
+                        else if (CityData.referencePhoto(imageKey) != null) put("sample", imageKey)
+                    }
+                } catch (exception: IOException) {
+                    if (route.page == "compose") toast(exception.message ?: "This photo could not be read")
+                    return@launch
+                } catch (_: SecurityException) {
+                    if (route.page == "compose") toast("Choose the photo again")
+                    return@launch
+                }
+                if (route.page != "compose") return@launch
+                model.updateCommunity("PUT", "posts", payload, ::toast) {
+                    save("postRetry", ""); save("text", ""); save("image", "")
+                    host.navigate("home", root = true)
+                }
+            }
+        }
         else {
             val post = LocalPost(UUID.randomUUID().toString(), value, category, imageKey)
             save("text", ""); save("image", "")
@@ -139,7 +181,8 @@ fun CityScreens.story() = renderStoryMicro()
 fun CityScreens.saved() {
     ui.heading(body, "Keep the good stuff.", "A little collection of things to come back to.")
     val saved = (CityData.all + localEvents).distinctBy { it.id }.filter { it.id in s.saved }
-    if (saved.isEmpty()) {
+    model.cloudSavedPosts.forEach { communityPostCard(it) }
+    if (saved.isEmpty() && model.cloudSavedPosts.isEmpty()) {
         ui.empty(body, "Your next favourite goes here", "Tap a bookmark on a post, club, event or café.")
         ui.button(body, "Explore your city") { go("explore") }
     } else saved.forEach { itemCard(it) }

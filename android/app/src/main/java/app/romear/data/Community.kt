@@ -14,6 +14,21 @@ internal data class SharedPool(val pool: LocalPool, val mine: Boolean, val statu
     )
 }
 internal data class PoolApplicant(val pool: String, val account: String, val title: String, val name: String, val status: String)
+internal data class CommunityPost(
+    val id: String, val owner: String, val author: String, val body: String, val category: String,
+    val city: String, val photo: Boolean, val sample: String?, val mine: Boolean, val following: Boolean,
+    val liked: Boolean, val saved: Boolean, val likes: Int, val comments: Int,
+) {
+    val item get() = CityItem(id, body.take(70), author, R.drawable.photo_river, Kind.POST, body, city, category)
+}
+internal data class PostComment(val author: String, val body: String)
+internal data class OfferDraft(val id: String, val title: String, val description: String, val date: String, val discount: Int)
+
+internal fun JSONObject.communityPost() = CommunityPost(
+    getString("id"), getString("owner_id"), getString("author"), getString("body"), getString("category"),
+    getString("city"), getBoolean("has_photo"), optString("sample").takeUnless { isNull("sample") },
+    getBoolean("mine"), getBoolean("following"), getBoolean("liked"), getBoolean("saved"), getInt("likes"), getInt("comments"),
+)
 
 internal fun <T> JSONObject.records(key: String, read: (JSONObject) -> T): List<T> {
     val rows = getJSONArray(key)

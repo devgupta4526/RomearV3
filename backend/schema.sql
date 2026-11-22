@@ -113,3 +113,43 @@ CREATE TABLE IF NOT EXISTS club_message (
 );
 CREATE INDEX IF NOT EXISTS club_message_recent ON club_message (club_id, sent_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS club_message_sender_rate ON club_message (sender_id, sent_at);
+
+CREATE TABLE IF NOT EXISTS community_post (
+    id uuid PRIMARY KEY,
+    owner_id uuid NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    body text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+    category text NOT NULL,
+    photo bytea CHECK (octet_length(photo) <= 262144),
+    sample text,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS community_post_recent ON community_post (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS community_post_owner ON community_post (owner_id);
+
+CREATE TABLE IF NOT EXISTS post_comment (
+    post_id uuid NOT NULL REFERENCES community_post(id) ON DELETE CASCADE,
+    account_id uuid NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    id uuid NOT NULL,
+    body text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 1000),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY (post_id, account_id, id)
+);
+CREATE INDEX IF NOT EXISTS post_comment_recent ON post_comment (post_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS post_reaction (
+    post_id uuid NOT NULL REFERENCES community_post(id) ON DELETE CASCADE,
+    account_id uuid NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('like', 'save')),
+    PRIMARY KEY (post_id, account_id, kind)
+);
+CREATE INDEX IF NOT EXISTS post_comment_account ON post_comment (account_id);
+CREATE INDEX IF NOT EXISTS post_reaction_account ON post_reaction (account_id, kind);
+
+CREATE TABLE IF NOT EXISTS account_library (
+    account_id uuid NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('stamps', 'events', 'offers')),
+    id text NOT NULL,
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, kind, id)
+);

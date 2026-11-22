@@ -221,3 +221,11 @@ def revoke(request: ApiRequest):
     with connect() as db:
         db.execute("DELETE FROM account_session WHERE token_hash = %s", (session_hash(request),))
     return Response(status_code=204)
+
+
+@router.delete("/account", status_code=204)
+def delete_account(request: ApiRequest):
+    with connect() as db:
+        account = authenticated_account(db, request)
+        db.execute("DELETE FROM account WHERE id = %s", (account,))
+    return Response(status_code=204)

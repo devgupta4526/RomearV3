@@ -81,6 +81,11 @@ internal class CityAuth(context: Context) {
     suspend fun community(method: String, path: String, body: JSONObject? = null): JSONObject =
         authorized(method, path, body, "community")
 
+    suspend fun deleteAccount() {
+        authorized("DELETE", "account", null, "auth")
+        sessionLock.withLock { prefs.edit().remove(tokenKey).remove(deviceKey).remove(demoKey).apply() }
+    }
+
     private suspend fun authorized(method: String, path: String, body: JSONObject?, namespace: String): JSONObject {
         val token = prefs.getString(tokenKey, null) ?: throw IOException("Sign in to continue")
         try {

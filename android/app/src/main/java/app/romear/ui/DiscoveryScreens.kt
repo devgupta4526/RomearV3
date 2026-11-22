@@ -61,7 +61,7 @@ fun CityScreens.explore() {
         "Events" -> CityData.events.forEach { itemCard(it) }
         "People" -> discoverPeople.forEach { resultRow(it) }
         "Cafés" -> CityData.venues.forEach { itemCard(it) }
-        "Posts" -> CityData.posts.forEach { feedPost(it) }
+        "Posts" -> if (model.activeCommunity) model.publicFeed.forEach { communityPostCard(it) } else CityData.posts.forEach { feedPost(it) }
         else -> {
             ui.section(body, "Coming up"); itemCard(CityData.events.first())
             ui.section(body, "Small plans nearby"); itemCard(CityData.pools.first())
@@ -203,7 +203,10 @@ fun CityScreens.person() {
     val tab = draft("profile-tab", "About")
     ui.chips(body, listOf("About", "Activity", "Clubs", "Events"), tab) { save("profile-tab", it); refresh() }
     if (live) {
-        if (tab == "About") ui.note(body, p.subtitle)
+        if (tab == "About" || tab == "Activity") {
+            if (tab == "About") ui.note(body, p.subtitle)
+            model.authorPosts[p.id].orEmpty().forEach { communityPostCard(it) }
+        }
         else ui.empty(body, "Nothing shared here yet", "This member’s public ${tab.lowercase()} will appear here.")
         return
     }

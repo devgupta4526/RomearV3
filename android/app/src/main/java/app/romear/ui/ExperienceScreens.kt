@@ -19,7 +19,8 @@ fun CityScreens.listing() {
     }
     val filter = draft("filter", "For you")
     ui.chips(body, if (venues) listOf("For you", "Cafés", "Workspaces") else listOf("For you", "Running", "Cafés", "Food & culture"), filter) { save("filter", it); refresh() }
-    (if (venues) CityData.venues else CityData.events + localEvents).filter { filter == "For you" || it.category == filter }.forEach { itemCard(it) }
+    val catalogue = if (venues) CityData.venues else CityData.events + if (model.activeCommunity) emptyList() else localEvents
+    catalogue.filter { filter == "For you" || it.category == filter }.forEach { itemCard(it) }
     ui.button(body, "View my plans", false, R.drawable.ic_calendar) { go("plans") }
     ui.note(body, "Reference collection · Event schedules, venue details and availability are demo content.")
 }
@@ -41,7 +42,7 @@ fun CityScreens.experience() {
     ui.button(body, if (item.id in s.saved) "Saved · Remove" else "Save for later", false, R.drawable.ic_bookmark) { repo.toggle(item.id, "saved") }
     ui.button(body, "Share", false, R.drawable.ic_share) { share("${item.title}\n${item.description}\n${item.location} · ROMEAR") }
     if (item.kind == Kind.EVENT) ui.action(body, "Meet the community", "Discover the clubs behind the city", R.drawable.ic_users) { go("clubs") }
-    if (s.events.any { it.id == item.id }) ui.button(body, "Edit local event draft", false) { go("create-event", item.id) }
+    if (businessEvents.any { it.id == item.id }) ui.button(body, "Edit event draft", false) { go("create-event", item.id) }
 }
 
 fun CityScreens.pickDate(current: String, selected: (String) -> Unit) {
@@ -53,10 +54,10 @@ fun CityScreens.pickDate(current: String, selected: (String) -> Unit) {
 
 fun CityScreens.booking() {
     val item = findItem(route.id) ?: return
-    val date = draft("date_${item.id}", s.events.firstOrNull { it.id == item.id }?.date ?: LocalDate.now().plusDays(1).toString())
+    val date = draft("date_${item.id}", businessEvents.firstOrNull { it.id == item.id }?.date ?: LocalDate.now().plusDays(1).toString())
     val time = draft("time_${item.id}", if (item.kind == Kind.EVENT) "5:00 PM" else "1:30 PM")
     val guests = draft("guests_${item.id}", "2").toIntOrNull()?.coerceIn(1, 8) ?: 2
-    val live = model.activeCommunity && s.events.none { it.id == item.id }
+    val live = model.activeCommunity && CityData.find(item.id) != null
     ui.heading(body, if (item.kind == Kind.EVENT) "Checkout" else "Book a Table", item.title)
     ui.note(body, if (live) "1  Details    →    2  Save plan" else "1  Details    →    2  Local confirmation")
     ui.action(body, "Select a date", LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy")), R.drawable.ic_calendar) {

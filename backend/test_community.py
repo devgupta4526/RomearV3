@@ -1,5 +1,6 @@
 """Run against disposable local PostgreSQL with ROMEAR_TEST_DATABASE_URL set."""
 import json
+import base64
 import os
 import secrets
 import socket
@@ -8,12 +9,14 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+from io import BytesIO
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import uvicorn
+from PIL import Image
 
 from database import connect
 from main import app
@@ -89,6 +92,8 @@ class CommunityTest(unittest.TestCase):
         ids = {row["id"] for row in rows["people"]}
         self.assertIn(public, ids)
         self.assertNotIn(invisible, ids)
+        self.assertEqual(self.call("GET", f"community/people/{public}", token)[1]["person"]["id"], public)
+        self.assertEqual(self.call("GET", f"community/people/{invisible}", token)[0], 404)
         self.assertNotIn(me, ids)
         self.assertEqual(self.call("PUT", f"community/following/{public}", token)[0], 204)
         self.assertTrue(next(p["following"] for p in self.call("GET", "community/people", token)[1]["people"] if p["id"] == public))
@@ -162,3 +167,51 @@ class CommunityTest(unittest.TestCase):
         self.assertEqual([row["body"] for row in history], [data["body"]])
         self.assertEqual(self.call("DELETE", root + "/membership", member)[0], 204)
         self.assertEqual(self.call("GET", root + "/messages", member)[0], 403)
+
+    def test_post_photo_comments_visibility_and_deletion(self):
+        _, author_id, author = self.account()
+        _, _, reader = self.account()
+        root = "community/posts"
+        post_id = str(uuid4())
+        with BytesIO() as image:
+            Image.new("RGB", (4, 4), "white").save(image, format="JPEG")
+            photo = base64.b64encode(image.getvalue()).decode("ascii")
+        payload = {"id": post_id, "body": "A photo from the park", "category": "Culture", "photo": photo}
+        self.assertEqual(self.call("PUT", root, author, dict(payload, photo="invalid!"))[0], 422)
+        self.assertEqual(self.call("PUT", root, author, payload)[0], 204)
+        self.assertEqual(self.call("PUT", root, author, payload)[0], 204)
+        path = f"{root}/{post_id}"
+        self.assertEqual(self.call("GET", path + "/photo")[0], 401)
+        self.assertEqual(self.call("GET", path + "/photo", reader), (200, {"jpeg": photo}))
+        self.assertEqual(self.call("GET", root + f"?author={author_id}", reader)[1]["posts"][0]["id"], post_id)
+        self.assertEqual(self.call("PUT", path + "/reaction/save", reader)[0], 204)
+        self.assertEqual(self.call("GET", root + "?view=saved", author)[1]["posts"], [])
+        self.assertEqual(self.call("GET", root + "?view=saved", reader)[1]["posts"][0]["id"], post_id)
+        self.assertEqual(self.call("PUT", path + "/reaction/like", reader)[0], 204)
+        comment = {"id": str(uuid4()), "body": "Great photo"}
+        self.assertEqual(self.call("PUT", path + "/comments", reader, comment)[0], 204)
+        self.assertEqual(self.call("PUT", path + "/comments", reader, comment)[0], 204)
+        result = self.call("GET", path, author)[1]
+        self.assertEqual(result["post"]["likes"], 1)
+        self.assertEqual(len(result["comments"]), 1)
+        self.assertEqual(self.call("DELETE", path, reader)[0], 404)
+        self.assertEqual(self.call("DELETE", "auth/account", author)[0], 204)
+        self.assertEqual(self.call("GET", "auth/session", author)[0], 401)
+        self.assertEqual(self.call("GET", path, reader)[0], 404)
+
+    def test_account_library_keeps_stamps_and_drafts_private(self):
+        _, _, first = self.account()
+        _, _, other = self.account()
+        root = "community/library"
+        item = f"{root}/events/{uuid4()}"
+        event = {"title": "Evening walk", "description": "Notes for an unpublished event", "location": "Rome", "date": self.day}
+        self.assertEqual(self.call("PUT", item, first, event)[0], 204)
+        self.assertEqual(self.call("PUT", item, first, dict(event, title="Evening plan"))[0], 204)
+        self.assertEqual(self.call("PUT", root + "/stamps/Rome", first)[0], 204)
+        self.assertEqual(self.call("DELETE", item, other)[0], 204)
+        self.assertEqual(self.call("GET", root, other)[1], {"stamps": [], "events": [], "offers": []})
+        saved = self.call("GET", root, first)[1]
+        self.assertEqual(saved["events"][0]["title"], "Evening plan")
+        self.assertEqual(saved["stamps"], ["Rome"])
+        self.assertEqual(self.call("DELETE", item, first)[0], 204)
+        self.assertEqual(self.call("GET", root, first)[1]["events"], [])

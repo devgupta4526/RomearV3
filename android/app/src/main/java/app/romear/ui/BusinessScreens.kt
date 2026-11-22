@@ -27,21 +27,32 @@ fun CityScreens.business() {
     ui.heading(body, "Business Tools", "A workspace for the people behind the places.")
     val tab = draft("workspace", "Club tools")
     ui.chips(body, listOf("Club tools", "Venue tools"), tab) { save("workspace", it); refresh() }
-    ui.note(body, "Local business preview · No organisation account, public listing or live booking access.")
+    ui.note(body, if (model.activeCommunity) "Private workspace · Your drafts are saved to your account." else "Local business preview · No organisation account, public listing or live booking access.")
     if (tab == "Club tools") {
-        ui.stats(body, listOf(s.events.size.toString() to "Event drafts", s.approved.size.toString() to "Approved", (3 - s.approved.size - s.declined.size).coerceAtLeast(0).toString() to "Sample requests"))
+        ui.stats(body, listOf(businessEvents.size.toString() to "Event drafts", s.approved.size.toString() to "Approved", (3 - s.approved.size - s.declined.size).coerceAtLeast(0).toString() to "Sample requests"))
         ui.button(body, "Create an event draft", icon = R.drawable.ic_plus) { go("create-event") }
         ui.action(body, "Member approvals", if (model.activeCommunity) "Review requests to join your pools" else "Try a sample organiser queue", R.drawable.ic_users) { go("approvals") }
         ui.action(body, "Club verification", "Understand the publishing requirements", R.drawable.ic_shield) { go("verification") }
         ui.section(body, "Your event drafts")
-        if (s.events.isEmpty()) ui.note(body, "Bring your first idea to life. Event drafts are saved on this device.")
-        localEvents.forEach { itemCard(it) }
+        if (businessEvents.isEmpty()) ui.note(body, "Create an event draft to see it here.")
+        localEvents.forEach { item ->
+            if (model.eventDrafts.any { it.id == item.id }) {
+                ui.photo(body, item, item.id in s.saved, { repo.toggle(item.id, "saved") }, { go("create-event", item.id) })
+            } else itemCard(item)
+        }
     } else {
         ui.stats(body, listOf(s.bookings.count { !it.cancelled }.toString() to "Demo bookings", s.offers.size.toString() to "Offer drafts", "0" to "Live listings"))
         ui.button(body, "Create an offer draft", icon = R.drawable.ic_plus) { go("create-offer") }
         ui.action(body, "Booking management", "View local demo reservations", R.drawable.ic_calendar) { go("plans") }
         ui.section(body, "Your offer drafts")
-        if (s.offers.isEmpty()) ui.note(body, "Create a little reason for your community to come by.")
+        if (s.offers.isEmpty() && model.offerDrafts.isEmpty()) ui.note(body, "Create a little reason for your community to come by.")
+        model.offerDrafts.forEach { offer ->
+            ui.action(body, offer.title, "${offer.discount}% off · Until ${offer.date}\n${offer.description}", R.drawable.ic_ticket) {
+                confirm("Remove this offer draft?", "This removes it from your account.", "Remove") {
+                    model.updateCommunity("DELETE", "library/offers/${offer.id}", null, ::toast) { refresh() }
+                }
+            }
+        }
         s.offers.forEach { offer -> ui.action(body, offer.substringBefore('\n'), offer.substringAfter('\n', ""), R.drawable.ic_ticket) {
             confirm("Remove this offer draft?", "This only removes the draft stored on your device.", "Remove") { repo.update { it.copy(offers = it.offers - offer) } }
         } }
@@ -104,7 +115,7 @@ fun CityScreens.verification() {
 
 fun CityScreens.businessEditor() {
     val event = route.page == "create-event"
-    val existing = s.events.firstOrNull { it.id == route.id }
+    val existing = businessEvents.firstOrNull { it.id == route.id }
     ui.heading(body, if (event) "Make something\nworth showing up for." else "Give them a reason\nto drop by.")
     val title = ui.input(body, if (event) "Event title" else "Offer title", draft("title", existing?.name.orEmpty())) { save("title", it) }
     val description = ui.input(body, "Description", draft("description", existing?.description.orEmpty()), true) { save("description", it) }
@@ -112,7 +123,8 @@ fun CityScreens.businessEditor() {
     val date = draft("date", existing?.date ?: LocalDate.now().plusDays(7).toString())
     ui.action(body, if (event) "Event date" else "Valid until", date, R.drawable.ic_calendar) { pickDate(date) { save("date", it); refresh() } }
     val discount = if (!event) ui.input(body, "Discount percentage", draft("discount", "10"), type = android.text.InputType.TYPE_CLASS_NUMBER) { save("discount", it) } else null
-    ui.note(body, "Draft only · Saved on this device. No public event, discount or business listing will be published.")
+    val live = model.activeCommunity && (existing == null || existing in model.eventDrafts)
+    ui.note(body, if (live) "Private draft · Saved to your account." else "Draft only · Saved on this device.")
     ui.button(body, "Save ${if (event) "event" else "offer"} draft") {
         when {
             title.text.toString().trim().length !in 3..80 -> title.error = "Use 3–80 characters"
@@ -120,6 +132,17 @@ fun CityScreens.businessEditor() {
             event && place!!.text.toString().trim().length !in 3..120 -> place!!.error = "Use 3–120 characters"
             !event && (discount!!.text.toString().toIntOrNull() ?: 0) !in 1..90 -> discount!!.error = "Choose a value from 1 to 90"
             LocalDate.parse(date).isBefore(LocalDate.now()) -> toast("Choose today or a future date")
+            live -> {
+                val payload = JSONObject().put("title", title.text.toString().trim())
+                    .put("description", description.text.toString().trim()).put("date", date)
+                if (event) payload.put("location", place!!.text.toString().trim())
+                else payload.put("discount", discount!!.text.toString().toInt())
+                val id = existing?.id ?: retryId("draftRetry", payload.toString())
+                val kind = if (event) "events" else "offers"
+                model.updateCommunity("PUT", "library/$kind/$id", payload, ::toast) {
+                    save("draftRetry", ""); save("title", ""); save("description", ""); save("place", ""); go("business")
+                }
+            }
             else -> {
                 if (event) {
                     val entry = LocalEvent(existing?.id ?: "local-${UUID.randomUUID()}", title.text.toString().trim(), description.text.toString().trim(), place!!.text.toString().trim(), date)
@@ -132,10 +155,13 @@ fun CityScreens.businessEditor() {
             }
         }
     }
-    if (existing != null) ui.button(body, "Remove local event draft", false) {
+    if (existing != null) ui.button(body, if (live) "Remove event draft" else "Remove local event draft", false) {
         confirm("Remove this event draft?", "This removes the event and any demo reservations for it from this device.", "Remove") {
-            repo.update { it.copy(events = it.events.filterNot { e -> e.id == existing.id }, bookings = it.bookings.filterNot { b -> b.itemId == existing.id }, saved = it.saved - existing.id) }
-            go("business")
+            if (live) model.updateCommunity("DELETE", "library/events/${existing.id}", null, ::toast) { go("business") }
+            else {
+                repo.update { it.copy(events = it.events.filterNot { e -> e.id == existing.id }, bookings = it.bookings.filterNot { b -> b.itemId == existing.id }, saved = it.saved - existing.id) }
+                go("business")
+            }
         }
     }
 }

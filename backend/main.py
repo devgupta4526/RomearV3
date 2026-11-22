@@ -13,6 +13,8 @@ from starlette.concurrency import run_in_threadpool
 from accounts import router as account_router
 from database import connect
 from community import router as community_router
+from posts import router as posts_router
+from library import router as library_router
 
 MAX_BODY = 128 * 1024
 TOKEN = re.compile(r"Bearer ([a-f0-9]{64})")
@@ -30,13 +32,14 @@ class LimitCommunityBody:
         ):
             await self.app(scope, receive, send)
             return
+        limit = 384 * 1024 if scope["path"] == "/v1/community/posts" else 16 * 1024
         body = bytearray()
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
                 return
             chunk = message.get("body", b"")
-            if len(body) + len(chunk) > 16 * 1024:
+            if len(body) + len(chunk) > limit:
                 await JSONResponse({"detail": "Request is too large"}, status_code=413)(scope, receive, send)
                 return
             body.extend(chunk)
@@ -70,6 +73,8 @@ app = FastAPI(title="ROMEAR API", lifespan=lifespan, docs_url=None, redoc_url=No
 app.add_middleware(LimitCommunityBody)
 app.include_router(account_router)
 app.include_router(community_router)
+app.include_router(posts_router)
+app.include_router(library_router)
 
 
 @app.exception_handler(psycopg.Error)

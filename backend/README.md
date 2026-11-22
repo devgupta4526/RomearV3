@@ -38,7 +38,9 @@ The free build uses device credentials. **Find my city** creates or restores the
 
 Signed-in accounts can publish their profiles during setup, discover and follow other members, send direct text messages, join the existing ROMEAR clubs, and access member-only club chat. Members can create pools and request spots. Organizers decide in Member approvals, which checks each pool's capacity in a database transaction. My Plans saves and cancels private plans for the existing event and café catalogue. A saved plan does not reserve inventory or charge a payment.
 
-Verified club management, public event and offer publishing, cloud media, production email delivery, SMS, and payments remain outside this release.
+Signed-in members can share text posts and JPEG photos, comment, react, and keep private bookmarks. Account-backed passport stamps and business drafts stay private. Settings supports authenticated account deletion. See the [backend checklist](../docs/BACKEND_CHECKLIST.md) for remaining flows and verification.
+
+Verified club management, event and offer publishing, cloud video, production email delivery, SMS, and payments remain outside this release.
 
 Run the API integration tests with `python -m unittest -v test_community` from this directory. Set `ROMEAR_TEST_DATABASE_URL` to disposable local PostgreSQL before running them.
 

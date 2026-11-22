@@ -88,6 +88,23 @@ def follow(peer: UUID, request: Request):
     return Response(status_code=204)
 
 
+@router.get("/people/{peer}")
+def person(peer: UUID, request: Request):
+    with connect() as db:
+        me = authenticated_account(db, request)
+        with db.cursor(row_factory=dict_row) as cursor:
+            row = cursor.execute(
+                """
+                SELECT p.account_id AS id, p.profile, (f.peer_id IS NOT NULL) AS following
+                FROM account_profile p LEFT JOIN account_follow f ON f.account_id = %s AND f.peer_id = p.account_id
+                WHERE p.account_id = %s AND p.discoverable
+                """, (me, peer),
+            ).fetchone()
+        if not row:
+            raise HTTPException(404, "Profile unavailable")
+        return {"person": row}
+
+
 @router.delete("/following/{peer}", status_code=204)
 def unfollow(peer: UUID, request: Request):
     with connect() as db:

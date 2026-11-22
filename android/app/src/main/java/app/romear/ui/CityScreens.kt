@@ -19,7 +19,9 @@ class CityScreens(val host: MainActivity) {
     fun toast(text: String) { Toast.makeText(host, text, Toast.LENGTH_SHORT).show() }
     fun draft(key: String, default: String = "") = model.draft("${route.page}_${route.id}_$key", default)
     fun save(key: String, value: String) = model.saveDraft("${route.page}_${route.id}_$key", value)
-    val localEvents get() = s.events.map { CityItem(it.id, it.name, "${it.date} · Local event draft", R.drawable.photo_market, Kind.EVENT, it.description, it.location, "Community") }
+    val businessEvents get() = model.eventDrafts + s.events
+    val passportStamps get() = if (model.activeCommunity) model.savedStamps else s.stamps
+    val localEvents get() = businessEvents.map { CityItem(it.id, it.name, "${it.date} · Event draft", R.drawable.photo_market, Kind.EVENT, it.description, it.location, "Community") }
     fun findItem(id: String) = CityData.find(id) ?: localEvents.firstOrNull { it.id == id }
     val discoverPeople get() = if (model.activeCommunity) model.people.map { it.item } else CityData.people
     val joinedClubs get() = if (model.activeCommunity) model.clubMemberships.filter { it.joined }.map { it.id }.toSet() else s.joined

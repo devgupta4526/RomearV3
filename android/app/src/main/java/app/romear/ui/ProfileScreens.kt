@@ -98,7 +98,12 @@ fun CityScreens.passport() {
         contentDescription = "ROMEAR City Passport for ${s.name}, City Explorer, Level $level"
     })
     ui.stats(body, listOf("128" to "Verified Experiences", "6" to "Cities Visited", "42" to "Places Explored"))
-    ui.section(body, "Passport Stamps", "${s.stamps.size} cities") { }
+    ui.section(body, "Passport Stamps", "${passportStamps.size} cities") { }
+    fun setStamp(city: String, present: Boolean) {
+        if (model.activeCommunity) {
+            model.updateCommunity(if (present) "PUT" else "DELETE", "library/stamps/$city", null, ::toast) { refresh() }
+        } else repo.update { it.copy(stamps = if (present) it.stamps + city else it.stamps - city) }
+    }
     val cities = listOf("Rome" to R.drawable.photo_rome, "Milan" to R.drawable.photo_milan, "Florence" to R.drawable.photo_florence,
         "Naples" to R.drawable.photo_naples, "Bologna" to R.drawable.photo_bologna, "Venice" to R.drawable.photo_venice)
     cities.chunked(3).forEach { three ->
@@ -107,16 +112,19 @@ fun CityScreens.passport() {
                 layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = ui.dp(6); bottomMargin = ui.dp(16) }
                 alpha = 1f
                 addView(ui.image(image, 78)); addView(ui.text(city, 14, true).apply { gravity = Gravity.CENTER })
-                setOnClickListener { if (city in s.stamps) confirm("Remove $city stamp?", "This is a self-reported stamp on your device.", "Remove") { repo.update { it.copy(stamps = it.stamps - city) } } else repo.update { it.copy(stamps = it.stamps + city) } }
+                setOnClickListener {
+                    if (city in passportStamps) confirm("Remove $city stamp?", "This removes a self-reported stamp.", "Remove") { setStamp(city, false) }
+                    else setStamp(city, true)
+                }
             }) }
         })
     }
     ui.button(body, "Add Passport Stamp", icon = R.drawable.ic_plus) {
-        val available = cities.map { it.first }.filterNot { it in s.stamps }
-        if (available.isEmpty()) toast("You’ve collected every city in this demo")
-        else choose("Where have you explored?", available) { city -> repo.update { it.copy(stamps = it.stamps + city) } }
+        val available = cities.map { it.first }.filterNot { it in passportStamps }
+        if (available.isEmpty()) toast("You’ve collected every city")
+        else choose("Where have you explored?", available) { city -> setStamp(city, true) }
     }
-    ui.note(body, "Stamps are self-reported local keepsakes. They are not verified travel records.")
+    ui.note(body, if (model.activeCommunity) "Your account stores these self-reported stamps." else "Stamps are self-reported local keepsakes.")
 }
 
 fun CityScreens.map() {
@@ -210,14 +218,25 @@ fun CityScreens.settings() {
         text = "Show illustrated experience map"; isChecked = s.mapVisible; minHeight = ui.dp(56)
         setOnCheckedChangeListener { _, value -> repo.update { it.copy(mapVisible = value) } }
     })
-    ui.note(body, "This offline app does not request your location or publish your profile. All messages, plans and activity stay on this device.")
+    ui.note(body, if (model.activeCommunity) "Signed-in members can see your profile and posts. Personal plans and direct messages are private to their participants."
+        else "The demo keeps its profile, messages and plans on this device.")
     ui.action(body, "ROMEAR Premium", "Preview the membership", R.drawable.ic_crown) { go("premium") }
     ui.action(body, "Business tools", "A preview for organisers and venues", R.drawable.ic_users) { go("business") }
     ui.divider(body)
-    ui.button(body, "Reset local demo data", false) {
+    ui.button(body, if (model.activeCommunity) "Delete account" else "Reset local demo data", false) {
+        if (model.activeCommunity) {
+            confirm("Delete your account?", "This permanently removes your account, posts, messages, pools and plans.", "Delete account") {
+                model.authenticate({ toast(it) }) {
+                    deleteAccount()
+                    model.reset()
+                    host.navigate("welcome", root = true)
+                }
+            }
+            return@button
+        }
         confirm("Start fresh?", "This permanently removes this app’s local profile, posts, messages, stamps and reservations from this device.", "Reset data") {
             model.reset(); host.navigate("welcome", root = true)
         }
     }
-    ui.note(body, "ROMEAR 0.1.0 · Native Android preview\nNo connected authentication, billing, live bookings or moderation service.")
+    ui.note(body, if (model.activeCommunity) "ROMEAR 0.1.0 · Native Android preview" else "ROMEAR 0.1.0 · Native Android preview\nDemo mode")
 }
