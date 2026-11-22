@@ -27,6 +27,7 @@ fun CityScreens.onboarding() {
                 } else go("signin")
             }
             ui.button(body, "Explore the demo", false) { model.auth.chooseDemo(); model.finishOnboarding(); refresh() }
+            if (model.auth.deviceEnabled) ui.button(body, "Use a transfer code", false) { showTransferInput() }
             ui.note(body, "A city-first social network. Built around real people and real experiences.")
         }
         "signin" -> {

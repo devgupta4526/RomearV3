@@ -220,6 +220,11 @@ fun CityScreens.settings() {
     })
     ui.note(body, if (model.activeCommunity) "Signed-in members can see your profile and posts. Personal plans and direct messages are private to their participants."
         else "The demo keeps its profile, messages and plans on this device.")
+    if (model.activeCommunity && model.auth.deviceEnabled) {
+        ui.action(body, "Transfer account", "Move your account to another device", R.drawable.ic_shield) {
+            model.authenticate({ toast(it) }) { showTransferCode(createTransferCode()) }
+        }
+    }
     ui.action(body, "ROMEAR Premium", "Preview the membership", R.drawable.ic_crown) { go("premium") }
     ui.action(body, "Business tools", "A preview for organisers and venues", R.drawable.ic_users) { go("business") }
     ui.divider(body)

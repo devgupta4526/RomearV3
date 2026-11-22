@@ -7,7 +7,8 @@ Track each flow separately from its verification. Android build and lint are req
 | Render and PostgreSQL | Live | Render reports the intended commit live. Verify HTTPS and persistence on the hosted database. |
 | Device sign-in and session renewal | Live | Create an account, reopen it on the same installation, and reject expired or revoked sessions. |
 | Public profile, discovery and following | Live | Only opted-in profiles appear. Follow and unfollow persist under the authenticated account. |
-| Account recovery and cross-device access | Pending | Add a verified login method that can safely link an existing device account, then test recovery on another device. |
+| Cross-device transfer | Implemented | Generate an expiring code on the signed-in device and redeem it on a new installation. Keep the account data, revoke the old server session, and reject use from a third installation. |
+| Recovery after losing device access | Provider blocked | Link a verified login to the existing account. A transfer code must be generated while the old installation is accessible. |
 | Email OTP | Provider blocked | Configure a verified sender, deliver a real code, and verify expiry, replay prevention, and registration limits. |
 | SMS OTP | Provider blocked | Configure delivery and test real messages plus abuse controls. |
 | Direct text and club messages | Live | Verify message isolation, idempotent sending, membership gates and revocation when leaving. |
@@ -29,6 +30,6 @@ Track each flow separately from its verification. Android build and lint are req
 | Badges, timeline and recap | Partly local | Add event-derived activity, achievement rules and private recap reads. |
 | Account deletion | Implemented | Confirm in Settings, delete the authenticated account and cascading records, revoke sessions, and clear this installation’s local data. |
 | Reporting and blocking | Pending | Provide reports, block enforcement across discovery and messaging, and a moderation queue. |
-| Local PostgreSQL regression tests | Passed | Six scenarios cover account scope, duplicate writes, message membership, pool capacity, post and photo access, and private drafts and stamps. |
+| Local PostgreSQL regression tests | Passed | Seven scenarios cover account scope, device transfer and revocation, duplicate writes, message membership, pool capacity, post and photo access, and private drafts and stamps. |
 | Hosted API regression checks | Passed | Two temporary accounts verified photo round trips, comments, likes, private bookmarks, private drafts and stamps, and account deletion. Both test accounts were deleted. |
 | Android device verification | Deferred | Run instrumented and visual checks when a test device or emulator is available. |

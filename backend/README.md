@@ -36,6 +36,8 @@ Live mail delivery requires a [Resend verified sender domain](https://resend.com
 
 The free build uses device credentials. **Find my city** creates or restores the account linked to this installation. Clearing Android app storage loses that credential. **Explore the demo** uses the local prototype. To turn off device registration and sign-in, set `ENABLE_DEVICE_ACCOUNTS=false` on Render.
 
+To move a device account, open **Settings → Transfer account** on the signed-in phone. Enter the code using **Use a transfer code** on the new installation within ten minutes. The account and its server data move with the code, and the old installation loses server access to the account. This requires access to the signed-in installation to generate the code.
+
 Signed-in accounts can publish their profiles during setup, discover and follow other members, send direct text messages, join the existing ROMEAR clubs, and access member-only club chat. Members can create pools and request spots. Organizers decide in Member approvals, which checks each pool's capacity in a database transaction. My Plans saves and cancels private plans for the existing event and café catalogue. A saved plan does not reserve inventory or charge a payment.
 
 Signed-in members can share text posts and JPEG photos, comment, react, and keep private bookmarks. Account-backed passport stamps and business drafts stay private. Settings supports authenticated account deletion. See the [backend checklist](../docs/BACKEND_CHECKLIST.md) for remaining flows and verification.

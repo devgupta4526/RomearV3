@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS device_account (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS device_transfer (
+    account_id uuid PRIMARY KEY REFERENCES account(id) ON DELETE CASCADE,
+    code_hash bytea NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    redeemed_by bytea
+);
+
 CREATE TABLE IF NOT EXISTS account_profile (
     account_id uuid PRIMARY KEY REFERENCES account(id) ON DELETE CASCADE,
     profile jsonb NOT NULL CHECK (jsonb_typeof(profile) = 'object')

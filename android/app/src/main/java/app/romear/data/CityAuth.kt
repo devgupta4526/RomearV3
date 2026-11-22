@@ -42,13 +42,21 @@ internal class CityAuth(context: Context) {
         rememberSession(exchangeDevice())
     }
 
-    private suspend fun exchangeDevice(): JSONObject {
-        val key = prefs.getString(deviceKey, null) ?: withContext(Dispatchers.IO) {
+    private suspend fun installationKey(): String =
+        prefs.getString(deviceKey, null) ?: withContext(Dispatchers.IO) {
             ByteArray(32).also(SecureRandom()::nextBytes)
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
                 .also { if (!prefs.edit().putString(deviceKey, it).commit()) throw IOException("Could not save device access") }
         }
-        return send("POST", "device", token = key)
+
+    private suspend fun exchangeDevice(restoreOnly: Boolean = false): JSONObject =
+        send("POST", if (restoreOnly) "device?restore_only=true" else "device", token = installationKey())
+
+    suspend fun createTransferCode(): String =
+        authorized("POST", "device/transfer-code", null, "auth").getString("code")
+
+    suspend fun transferDevice(code: String): CityState? = sessionLock.withLock {
+        rememberSession(send("POST", "device/transfer", JSONObject().put("code", code), installationKey()))
     }
 
     private fun rememberSession(result: JSONObject): CityState? {
@@ -94,7 +102,7 @@ internal class CityAuth(context: Context) {
             if (!deviceEnabled) throw expired
             val replacement = sessionLock.withLock {
                 val current = prefs.getString(tokenKey, null) ?: throw expired
-                if (current == token) rememberSession(exchangeDevice())
+                if (current == token) rememberSession(exchangeDevice(restoreOnly = true))
                 prefs.getString(tokenKey, null) ?: throw expired
             }
             return send(method, path, body, replacement, namespace = namespace)

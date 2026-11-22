@@ -147,7 +147,7 @@ def issue_session(db, account: UUID, token: str):
 
 
 @router.post("/device")
-def device_account(request: ApiRequest, response: Response):
+def device_account(request: ApiRequest, response: Response, restore_only: bool = False):
     if os.getenv("ENABLE_DEVICE_ACCOUNTS", "true").lower() != "true":
         raise HTTPException(404, "Device sign-in is unavailable")
     key = session_hash(request)
@@ -158,6 +158,8 @@ def device_account(request: ApiRequest, response: Response):
             account = existing[0]
             db.execute("DELETE FROM account_session WHERE account_id = %s", (account,))
         else:
+            if restore_only:
+                raise HTTPException(404, "This device no longer has account access")
             total, recent = db.execute(
                 "SELECT count(*), count(*) FILTER (WHERE created_at > now() - interval '1 hour') FROM device_account"
             ).fetchone()
@@ -166,6 +168,55 @@ def device_account(request: ApiRequest, response: Response):
             account = uuid4()
             db.execute("INSERT INTO account (id, email) VALUES (%s, %s)", (account, f"{account}@device.romear.invalid"))
             db.execute("INSERT INTO device_account (token_hash, account_id) VALUES (%s, %s)", (key, account))
+        result = issue_session(db, account, secrets.token_hex(32))
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+class TransferCode(BaseModel):
+    code: str = Field(pattern=r"^[a-f0-9]{40}$")
+
+
+@router.post("/device/transfer-code")
+def create_transfer(request: ApiRequest, response: Response):
+    code = secrets.token_hex(20)
+    digest = hashlib.sha256(bytes.fromhex(code)).digest()
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(610019)")
+        account = authenticated_account(db, request)
+        if not db.execute("SELECT 1 FROM device_account WHERE account_id = %s", (account,)).fetchone():
+            raise HTTPException(409, "Device transfer is available for device accounts")
+        db.execute(
+            """
+            INSERT INTO device_transfer (account_id, code_hash, expires_at)
+            VALUES (%s, %s, now() + interval '10 minutes')
+            ON CONFLICT (account_id) DO UPDATE SET code_hash = EXCLUDED.code_hash,
+                expires_at = EXCLUDED.expires_at, redeemed_by = NULL
+            """, (account, digest),
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return {"code": code, "expires_in": 600}
+
+
+@router.post("/device/transfer")
+def redeem_transfer(data: TransferCode, request: ApiRequest, response: Response):
+    receiving_key = session_hash(request)
+    digest = hashlib.sha256(bytes.fromhex(data.code)).digest()
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(610019)")
+        transfer = db.execute(
+            "SELECT account_id, redeemed_by FROM device_transfer WHERE code_hash = %s AND expires_at > now()",
+            (digest,),
+        ).fetchone()
+        if not transfer or (transfer[1] is not None and transfer[1] != receiving_key):
+            raise HTTPException(404, "This transfer code is invalid or expired")
+        account, redeemed_by = transfer
+        existing = db.execute("SELECT account_id FROM device_account WHERE token_hash = %s", (receiving_key,)).fetchone()
+        if existing and (existing[0] != account or redeemed_by is None):
+            raise HTTPException(409, "Use the code on a different installation without an account")
+        db.execute("UPDATE device_account SET token_hash = %s WHERE account_id = %s", (receiving_key, account))
+        db.execute("UPDATE device_transfer SET redeemed_by = %s WHERE account_id = %s", (receiving_key, account))
+        db.execute("DELETE FROM account_session WHERE account_id = %s", (account,))
         result = issue_session(db, account, secrets.token_hex(32))
     response.headers["Cache-Control"] = "no-store"
     return result

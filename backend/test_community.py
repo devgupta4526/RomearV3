@@ -216,3 +216,19 @@ class CommunityTest(unittest.TestCase):
         self.assertEqual(saved["stamps"], ["Rome"])
         self.assertEqual(self.call("DELETE", item, first)[0], 204)
         self.assertEqual(self.call("GET", root, first)[1]["events"], [])
+
+    def test_transfer_moves_the_account_and_revokes_old_device(self):
+        old_key, account, old_session = self.account()
+        receiving_key, third_key = secrets.token_hex(32), secrets.token_hex(32)
+        self.assertEqual(self.call("PUT", "community/library/stamps/Rome", old_session)[0], 204)
+        status, transfer = self.call("POST", "auth/device/transfer-code", old_session)
+        self.assertEqual(status, 200)
+        payload = {"code": transfer["code"]}
+        status, result = self.call("POST", "auth/device/transfer", receiving_key, payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["account_id"], account)
+        self.assertEqual(self.call("GET", "community/library", result["token"])[1]["stamps"], ["Rome"])
+        self.assertEqual(self.call("GET", "auth/session", old_session)[0], 401)
+        self.assertEqual(self.call("POST", "auth/device?restore_only=true", old_key)[0], 404)
+        self.assertEqual(self.call("POST", "auth/device/transfer", third_key, payload)[0], 404)
+        self.assertEqual(self.call("POST", "auth/device/transfer", receiving_key, payload)[1]["account_id"], account)
