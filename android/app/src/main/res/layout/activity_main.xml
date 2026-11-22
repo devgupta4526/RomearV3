@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/cream">
+    <LinearLayout android:id="@+id/toolbar" android:layout_width="0dp" android:layout_height="56dp"
+        android:gravity="center_vertical" android:paddingHorizontal="12dp" android:orientation="horizontal"
+        app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/leading" android:layout_width="48dp" android:layout_height="48dp"
+            android:padding="12dp" android:src="@drawable/ic_menu" android:contentDescription="@string/menu"
+            android:background="?attr/selectableItemBackgroundBorderless" app:tint="@color/forest_dark" />
+        <TextView android:id="@+id/toolbarTitle" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:gravity="center" android:text="@string/app_name" android:textSize="22sp"
+            android:textStyle="bold" android:letterSpacing="0.09" android:textColor="@color/forest_dark" />
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/trailing" android:layout_width="48dp" android:layout_height="48dp"
+            android:padding="12dp" android:src="@drawable/ic_bell" android:contentDescription="@string/notifications"
+            android:background="?attr/selectableItemBackgroundBorderless" app:tint="@color/forest_dark" />
+    </LinearLayout>
+    <androidx.core.widget.NestedScrollView android:id="@+id/scroll" android:layout_width="0dp" android:layout_height="0dp"
+        android:fillViewport="true" android:clipToPadding="false" app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintBottom_toTopOf="@id/detailDock" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <LinearLayout android:id="@+id/content" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingTop="8dp" android:paddingBottom="28dp" />
+    </androidx.core.widget.NestedScrollView>
+    <com.google.android.material.floatingactionbutton.FloatingActionButton android:id="@+id/compose" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:layout_margin="20dp" android:contentDescription="@string/create" android:src="@drawable/ic_plus"
+        app:tint="@color/cream" app:backgroundTint="@color/forest" app:layout_constraintBottom_toTopOf="@id/bottomNav"
+        app:layout_constraintEnd_toEndOf="parent" />
+    <LinearLayout android:id="@+id/detailDock" android:layout_width="0dp" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="12dp" android:background="@color/surface" android:visibility="gone" app:layout_constraintBottom_toTopOf="@id/bottomNav" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <LinearLayout android:id="@+id/bottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="76dp"
+        android:orientation="horizontal" android:gravity="center" android:paddingHorizontal="8dp" android:paddingVertical="8dp"
+        android:background="@drawable/bg_navigation" app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+    <FrameLayout android:id="@+id/microHost" android:layout_width="0dp" android:layout_height="0dp"
+        android:visibility="gone" android:background="@color/cream"
+        app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

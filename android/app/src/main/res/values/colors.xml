@@ -1,0 +1,13 @@
+<resources>
+    <color name="forest">#1F503A</color>
+    <color name="forest_dark">#123A2A</color>
+    <color name="terracotta">#C96542</color>
+    <color name="cream">#FAF7F1</color>
+    <color name="surface">#FFFCF7</color>
+    <color name="sand">#F0E7DA</color>
+    <color name="olive">#8A9872</color>
+    <color name="ink">#18251F</color>
+    <color name="muted">#6C7067</color>
+    <color name="line">#E6DDD0</color>
+    <color name="gold">#C38B39</color>
+</resources>

@@ -1,0 +1,19 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#101713">
+ <ImageView android:id="@+id/storyPhoto" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:contentDescription="City story" />
+ <View android:layout_width="match_parent" android:layout_height="180dp" android:background="@drawable/bg_story_top" />
+ <View android:layout_width="match_parent" android:layout_height="230dp" android:layout_gravity="bottom" android:background="@drawable/bg_story_bottom" />
+ <View android:id="@+id/storyTouch" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="90dp" android:layout_marginBottom="170dp" android:contentDescription="Tap right for next story, left for previous. Hold to pause." />
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="10dp" android:paddingTop="8dp">
+  <LinearLayout android:id="@+id/storyProgress" android:layout_width="match_parent" android:layout_height="3dp" android:orientation="horizontal" />
+  <LinearLayout android:id="@+id/storyHeader" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="64dp" android:gravity="center_vertical" />
+ </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_gravity="bottom" android:padding="12dp">
+  <TextView android:id="@+id/placeSticker" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center_horizontal" android:paddingHorizontal="14dp" android:paddingVertical="8dp" android:text="Riverside Café" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/forest_dark" android:background="@drawable/bg_message_input" />
+  <TextView android:id="@+id/storyCaption" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:padding="14dp" android:textColor="#FFFFFF" android:textSize="17sp" android:lineSpacingExtra="3dp" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+   <EditText android:id="@+id/storyReply" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="48dp" android:hint="Send message…" android:textColorHint="#DDE4DF" android:textColor="#FFFFFF" android:singleLine="true" android:imeOptions="actionSend" android:inputType="textCapSentences" android:textSize="14sp" android:paddingHorizontal="16dp" android:paddingVertical="12dp" android:background="@drawable/bg_story_reply" />
+   <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/storyLike" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_heart" android:contentDescription="Like story" android:background="?attr/selectableItemBackgroundBorderless" app:tint="#FFFFFF" />
+   <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/storySend" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_send" android:contentDescription="Send story reply" android:background="?attr/selectableItemBackgroundBorderless" app:tint="#FFFFFF" />
+  </LinearLayout>
+ </LinearLayout>
+</FrameLayout>

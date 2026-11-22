@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">ROMEAR</string>
+    <string name="back">Go back</string>
+    <string name="menu">Open city menu</string>
+    <string name="notifications">Notifications</string>
+    <string name="search">Search your city</string>
+    <string name="create">Create a post</string>
+    <string name="save">Save</string>
+</resources>
